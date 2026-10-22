@@ -330,6 +330,138 @@ local function walk(node, scopes, src, uses)
   end
 end
 
+local function path_literal(node, src)
+  if not node or node:type() ~= "path_expression" or node:named_child_count() ~= 1 then
+    return nil
+  end
+  local fragment = node:named_child(0)
+  if fragment:type() ~= "path_fragment" then
+    return nil
+  end
+  local text = text_of(fragment, src)
+  if text:sub(1, 2) ~= "./" then
+    return nil
+  end
+  local rel = text:sub(3):gsub("/+$", "")
+  if rel == "" or rel == "." then
+    return "."
+  end
+  return rel
+end
+
+local function call_paths(arg, src)
+  if not arg then
+    return nil
+  end
+  if arg:type() == "list_expression" then
+    local out = {}
+    for _, element in ipairs(arg:field("element")) do
+      local path = path_literal(element, src)
+      if not path then
+        return nil
+      end
+      out[#out + 1] = path
+    end
+    return out
+  end
+  local path = path_literal(arg, src)
+  return path and { path } or nil
+end
+
+local function applied(node)
+  local parent = node:parent()
+  if parent and parent:type() == "apply_expression" and first(parent, "function"):equal(node) then
+    return parent
+  end
+  return nil
+end
+
+local function classify(id)
+  local parent = id:parent()
+  local kind = parent:type()
+  if kind == "formal" or kind == "inherited_attrs" then
+    return nil
+  end
+  if kind == "variable_expression" then
+    return applied(parent) or false
+  end
+  if kind == "attrpath" then
+    local owner = parent:parent()
+    if owner:type() == "binding" then
+      return nil
+    end
+    local attrs = parent:field("attr")
+    if owner:type() == "select_expression" and attrs[#attrs]:equal(id) then
+      return applied(owner) or false
+    end
+  end
+  return false
+end
+
+local function imports_list(node, src)
+  local path = node:type() == "binding" and first(node, "attrpath")
+  if not path then
+    return nil
+  end
+  local attrs = path:field("attr")
+  local value = first(node, "expression")
+  if
+    #attrs == 0
+    or text_of(attrs[#attrs], src) ~= "imports"
+    or not value
+    or value:type() ~= "list_expression"
+  then
+    return nil
+  end
+  local out = {}
+  for _, element in ipairs(value:field("element")) do
+    out[#out + 1] = path_literal(element, src)
+  end
+  return out
+end
+
+function M.import_tree(text)
+  local result = { status = "none", paths = {} }
+  local ok, parser = pcall(vim.treesitter.get_string_parser, text, "nix")
+  if not ok then
+    return result
+  end
+  local calls, extra, unsupported = {}, {}, false
+  local function visit(node)
+    if node:type() == "identifier" and text_of(node, text) == "import-tree" then
+      local call = classify(node)
+      if call == false then
+        unsupported = true
+      elseif call then
+        local paths = call_paths(first(call, "argument"), text)
+        if paths then
+          vim.list_extend(calls, paths)
+        else
+          unsupported = true
+        end
+      end
+    end
+    vim.list_extend(extra, imports_list(node, text) or {})
+    for child in node:iter_children() do
+      visit(child)
+    end
+  end
+  visit(parser:parse()[1]:root())
+  if unsupported then
+    result.status = "unsupported"
+  elseif #calls > 0 then
+    result.status = "detected"
+    local seen = {}
+    for _, path in ipairs(vim.list_extend(calls, extra)) do
+      if not seen[path] then
+        seen[path] = true
+        result.paths[#result.paths + 1] = path
+      end
+    end
+  end
+  return result
+end
+
 function M.available()
   local ok, loaded = pcall(vim.treesitter.language.add, "nix")
   return ok and loaded == true
