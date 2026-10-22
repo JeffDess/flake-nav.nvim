@@ -58,6 +58,7 @@
             };
             statix.enable = true;
             deadnix.enable = true;
+            editorconfig-checker.enable = true;
           };
 
           devShells.default = pkgs.mkShell {
