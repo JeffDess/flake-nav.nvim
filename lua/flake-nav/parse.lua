@@ -127,6 +127,209 @@ local function count_errors(node)
   return total
 end
 
+local function lookup(scopes, name)
+  for i = #scopes, 1, -1 do
+    local kind = scopes[i][name]
+    if kind then
+      return kind
+    end
+  end
+  return nil
+end
+
+local function chain(node, src)
+  local kind = node:type()
+  if kind == "variable_expression" then
+    return text_of(first(node, "name"), src), {}
+  end
+  if kind == "select_expression" then
+    local base = first(node, "expression")
+    if not base or base:type() ~= "variable_expression" then
+      return nil
+    end
+    local segs = attrpath(first(node, "attrpath"), src)
+    if not segs then
+      return nil
+    end
+    return text_of(first(base, "name"), src), segs
+  end
+  return nil
+end
+
+local function after_root(node, scopes, src)
+  if not node then
+    return nil
+  end
+  local base, segs = chain(node, src)
+  if not base then
+    return nil
+  end
+  if lookup(scopes, base) == "alias" then
+    return segs
+  end
+  local names = { base }
+  for _, seg in ipairs(segs) do
+    names[#names + 1] = seg.name
+  end
+  for i = 2, #names do
+    if names[i] == "modules" then
+      local rooted = names[i - 1] == "flake"
+        or (i == 2 and names[1] == "self")
+        or (i == 3 and names[1] == "inputs" and names[2] == "self")
+      if rooted then
+        return vim.list_slice(segs, i)
+      end
+    end
+  end
+  return nil
+end
+
+local function inherited_names(node, src)
+  local names = {}
+  for child in node:iter_children() do
+    if child:type() == "inherited_attrs" then
+      for attr in child:iter_children() do
+        if attr:named() then
+          local name = attr_name(attr, src)
+          if name then
+            names[#names + 1] = name
+          end
+        end
+      end
+    end
+  end
+  return names
+end
+
+local function binding_scope(owner, src)
+  local scope, candidates = {}, {}
+  for _, b in ipairs(bindings(owner)) do
+    if b:type() == "binding" then
+      local segs = attrpath(first(b, "attrpath"), src)
+      if segs and segs[1] then
+        scope[segs[1].name] = "local"
+        if #segs == 1 then
+          candidates[#candidates + 1] = { name = segs[1].name, expr = first(b, "expression") }
+        end
+      end
+    else
+      for _, name in ipairs(inherited_names(b, src)) do
+        scope[name] = "local"
+      end
+    end
+  end
+  return scope, candidates
+end
+
+local function let_scope(node, scopes, src)
+  local scope, candidates = binding_scope(node, src)
+  scopes[#scopes + 1] = scope
+  local changed = true
+  while changed do
+    changed = false
+    for _, c in ipairs(candidates) do
+      if scope[c.name] ~= "alias" then
+        local rest = after_root(c.expr, scopes, src)
+        if rest and #rest == 0 then
+          scope[c.name] = "alias"
+          changed = true
+        end
+      end
+    end
+  end
+  table.remove(scopes)
+  return scope
+end
+
+local function function_scope(node, src)
+  local scope = {}
+  for _, universal in ipairs(node:field("universal")) do
+    scope[text_of(universal, src)] = "local"
+  end
+  for _, formals in ipairs(node:field("formals")) do
+    for _, formal in ipairs(formals:field("formal")) do
+      local name = first(formal, "name")
+      if name then
+        scope[text_of(name, src)] = "local"
+      end
+    end
+  end
+  return scope
+end
+
+local function list_identifiers(node, src, acc)
+  if not node then
+    return acc
+  end
+  local kind = node:type()
+  if kind == "list_expression" then
+    for _, element in ipairs(node:field("element")) do
+      if element:type() == "variable_expression" then
+        acc[#acc + 1] = first(element, "name")
+      end
+    end
+  elseif kind == "binary_expression" then
+    local operator = first(node, "operator")
+    if operator and text_of(operator, src) == "++" then
+      list_identifiers(first(node, "left"), src, acc)
+      list_identifiers(first(node, "right"), src, acc)
+    end
+  elseif kind == "parenthesized_expression" then
+    list_identifiers(first(node, "expression"), src, acc)
+  end
+  return acc
+end
+
+local function walk(node, scopes, src, uses)
+  local kind = node:type()
+  if kind == "ERROR" then
+    return
+  end
+  local pushed = true
+  if kind == "let_expression" then
+    scopes[#scopes + 1] = let_scope(node, scopes, src)
+  elseif kind == "function_expression" then
+    scopes[#scopes + 1] = function_scope(node, src)
+  elseif kind == "rec_attrset_expression" then
+    scopes[#scopes + 1] = (binding_scope(node, src))
+  else
+    pushed = false
+  end
+
+  if kind == "select_expression" then
+    local rest = after_root(node, scopes, src)
+    if rest and #rest == 2 then
+      uses[#uses + 1] = {
+        kind = "module",
+        class = rest[1].name,
+        name = rest[2].name,
+        range = { rest[2].node:range() },
+        class_range = { rest[1].node:range() },
+      }
+    end
+  elseif kind == "with_expression" then
+    local rest = after_root(first(node, "environment"), scopes, src)
+    if rest and #rest == 1 then
+      for _, id in ipairs(list_identifiers(first(node, "body"), src, {})) do
+        local name = text_of(id, src)
+        if not lookup(scopes, name) then
+          uses[#uses + 1] =
+            { kind = "module", class = rest[1].name, name = name, range = { id:range() } }
+        end
+      end
+    end
+  end
+
+  for child in node:iter_children() do
+    if child:named() then
+      walk(child, scopes, src, uses)
+    end
+  end
+  if pushed then
+    table.remove(scopes)
+  end
+end
+
 function M.available()
   local ok, loaded = pcall(vim.treesitter.language.add, "nix")
   return ok and loaded == true
@@ -143,6 +346,7 @@ function M.parse(text)
   if top and ATTRSETS[top:type()] then
     collect_defs(top, {}, text, result.defs)
   end
+  walk(root, {}, text, result.uses)
   result.errors = count_errors(root)
   return result
 end
