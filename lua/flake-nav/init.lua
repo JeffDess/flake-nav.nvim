@@ -6,6 +6,7 @@ local DEFAULTS = {
   ignore_underscore = true,
   hover = { max_lines = 30 },
   filter_with_definitions = true,
+  remap_store_paths = true,
 }
 
 M.config = vim.deepcopy(DEFAULTS)
@@ -21,8 +22,10 @@ local function merge(opts)
     config.ignore_underscore = opts.ignore_underscore
   end
   config.hover = vim.tbl_extend("force", config.hover, opts.hover or {})
-  if opts.filter_with_definitions ~= nil then
-    config.filter_with_definitions = opts.filter_with_definitions
+  for _, key in ipairs({ "filter_with_definitions", "remap_store_paths" }) do
+    if opts[key] ~= nil then
+      config[key] = opts[key]
+    end
   end
   return config
 end
@@ -51,6 +54,7 @@ function M.setup(opts)
 
   local filter = require("flake-nav.filter")
   filter.enabled = config.filter_with_definitions
+  filter.remap = config.remap_store_paths
   vim.api.nvim_create_autocmd("LspAttach", {
     group = vim.api.nvim_create_augroup("flake-nav-filter", { clear = true }),
     callback = function(args)

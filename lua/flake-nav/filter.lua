@@ -1,8 +1,16 @@
 local server = require("flake-nav.server")
+local remap = require("flake-nav.remap")
 
-local M = { enabled = true }
+local M = { enabled = true, remap = true, store = "/nix/store" }
 
-local METHOD = "textDocument/definition"
+local DEFINITION = "textDocument/definition"
+local LOCATIONS = {
+  [DEFINITION] = true,
+  ["textDocument/declaration"] = true,
+  ["textDocument/typeDefinition"] = true,
+  ["textDocument/implementation"] = true,
+  ["textDocument/references"] = true,
+}
 local wrapped = setmetatable({}, { __mode = "k" })
 
 local function same(a, b)
@@ -40,18 +48,24 @@ function M.wrap(client)
   wrapped[client] = true
   local request = client.request
   client.request = function(self, method, params, handler, bufnr)
-    if
-      M.enabled
-      and method == METHOD
-      and type(handler) == "function"
-      and type(params) == "table"
-    then
+    if LOCATIONS[method] and type(handler) == "function" and type(params) == "table" then
       local uri = params.textDocument and params.textDocument.uri
-      local range = uri and params.position and server.with_range(uri, params.position)
-      if range then
+      local range = M.enabled
+        and method == DEFINITION
+        and uri
+        and params.position
+        and server.with_range(uri, params.position)
+      local root = M.remap and uri and server.root_for(uri)
+      if range or root then
         local inner = handler
         handler = function(err, result, ...)
-          return inner(err, M.locations(result, uri, range), ...)
+          if range then
+            result = M.locations(result, uri, range)
+          end
+          if root then
+            result = remap.locations(result, root, M.store)
+          end
+          return inner(err, result, ...)
         end
       end
     end

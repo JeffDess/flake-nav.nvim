@@ -74,6 +74,11 @@ local function index_for(path)
   return found
 end
 
+function M.root_for(uri)
+  local index = index_for(vim.uri_to_fname(uri))
+  return index and index.root
+end
+
 function M.with_range(uri, pos)
   local path = vim.uri_to_fname(uri)
   local index = index_for(path)
