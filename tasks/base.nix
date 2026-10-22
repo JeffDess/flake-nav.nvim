@@ -4,5 +4,7 @@
     lint_commits
     lint_editor
     lint_nix
+    release
+    version
     ;
 }
