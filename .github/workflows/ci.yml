@@ -1,0 +1,86 @@
+---
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - converted_to_draft
+
+env:
+  NIX_CONFIG: experimental-features = nix-command flakes
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-nix
+      - name: Check formatting
+        run: |
+          nix fmt
+          git diff --exit-code
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-nix
+      - name: Lint
+        run: nix run .#lint
+
+  lint-commits:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-nix
+      - name: Lint commit messages
+        env:
+          EVENT: ${{ github.event_name }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_DRAFT: ${{ github.event.pull_request.draft }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            from=$PR_BASE
+            to=$PR_HEAD
+            allow_fixup=$PR_DRAFT
+          else
+            from=$PUSH_BEFORE
+            to=$GITHUB_SHA
+            allow_fixup=false
+          fi
+
+          if ! git rev-parse --verify --quiet "$from^{commit}" >/dev/null; then
+            if [ "$EVENT" = pull_request ]; then
+              echo "Pull request base $from is not in the clone" >&2
+              exit 1
+            fi
+            from=
+          fi
+
+          flags=()
+          if [ "$allow_fixup" = true ]; then
+            flags+=(--allow-fixup)
+          fi
+          nix run .#lint_commits -- "${flags[@]}" --from "$from" --to "$to"
+
+  flake-check:
+    needs:
+      - format
+      - lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-nix
+      - name: Flake check
+        run: nix flake check -L --no-update-lock-file
