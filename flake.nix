@@ -37,6 +37,9 @@
 
       perSystem =
         { config, pkgs, ... }:
+        let
+          lintCommits = pkgs.lib.getExe config.packages.lint_commits;
+        in
         {
           lets.tasks = ./tasks;
 
@@ -52,6 +55,18 @@
           };
 
           pre-commit.settings.hooks = {
+            convco = {
+              enable = true;
+              entry = "${lintCommits} --allow-fixup --message-file";
+            };
+            convco-push = {
+              enable = true;
+              name = "convco (push)";
+              stages = [ "pre-push" ];
+              pass_filenames = false;
+              always_run = true;
+              entry = "${lintCommits} --protect main";
+            };
             nixfmt = {
               enable = true;
               excludes = [ "^tests/fixtures/" ];
