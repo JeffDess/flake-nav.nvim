@@ -39,6 +39,10 @@
         { config, pkgs, ... }:
         let
           lintCommits = pkgs.lib.getExe config.packages.lint_commits;
+          testRtp = pkgs.lib.concatStringsSep "," [
+            "${pkgs.vimPlugins.mini-nvim}"
+            "${pkgs.vimPlugins.nvim-treesitter-parsers.nix}"
+          ];
         in
         {
           lets.tasks = ./tasks;
@@ -49,6 +53,21 @@
             src = ./.;
             doCheck = false;
           };
+
+          checks.tests =
+            pkgs.runCommand "flake-nav-tests"
+              {
+                nativeBuildInputs = [ pkgs.neovim-unwrapped ];
+                FLAKE_NAV_RTP = testRtp;
+              }
+              ''
+                cp -r ${./.} src
+                chmod -R u+w src
+                cd src
+                export HOME=$TMPDIR
+                nvim --headless --noplugin -u tests/minimal_init.lua -c "lua MiniTest.run()"
+                touch $out
+              '';
 
           formatter = pkgs.nixfmt-tree.override {
             runtimeInputs = [ pkgs.stylua ];
