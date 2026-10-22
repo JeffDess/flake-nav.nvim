@@ -65,7 +65,7 @@
                 chmod -R u+w src
                 cd src
                 export HOME=$TMPDIR
-                nvim --headless --noplugin -u tests/minimal_init.lua -c "lua MiniTest.run()"
+                nvim --headless --noplugin -u tests/minimal_init.lua -c "luafile tests/run.lua"
                 touch $out
               '';
 

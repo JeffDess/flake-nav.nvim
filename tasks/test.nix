@@ -13,11 +13,7 @@
     runtimeInputs = [ pkgs.neovim-unwrapped ];
     run = ''
       export FLAKE_NAV_RTP="${pkgs.vimPlugins.mini-nvim},${pkgs.vimPlugins.nvim-treesitter-parsers.nix}"
-      if [ -n "$file" ]; then
-        nvim --headless --noplugin -u tests/minimal_init.lua -c "lua MiniTest.run_file('$file')"
-      else
-        nvim --headless --noplugin -u tests/minimal_init.lua -c "lua MiniTest.run()"
-      fi
+      FLAKE_NAV_TEST_FILE="$file" nvim --headless --noplugin -u tests/minimal_init.lua -c "luafile tests/run.lua"
     '';
   };
 }
