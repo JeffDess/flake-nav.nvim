@@ -310,11 +310,17 @@ local function walk(node, scopes, src, uses)
   elseif kind == "with_expression" then
     local rest = after_root(first(node, "environment"), scopes, src)
     if rest and #rest == 1 then
+      local keyword = { node:child(0):range() }
       for _, id in ipairs(list_identifiers(first(node, "body"), src, {})) do
         local name = text_of(id, src)
         if not lookup(scopes, name) then
-          uses[#uses + 1] =
-            { kind = "module", class = rest[1].name, name = name, range = { id:range() } }
+          uses[#uses + 1] = {
+            kind = "module",
+            class = rest[1].name,
+            name = name,
+            range = { id:range() },
+            with_range = keyword,
+          }
         end
       end
     end

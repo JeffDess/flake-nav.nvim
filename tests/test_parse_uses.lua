@@ -64,7 +64,14 @@ T["with block lists"] = function()
   eq(keys(result), { "nixos.base", "nixos.locale" })
   for _, use in ipairs(result.uses) do
     eq(use.class_range, nil)
+    eq(use.with_range, { 5, 28, 5, 32 })
   end
+end
+
+T["selections carry no with range"] = function()
+  local result = parse.parse("{ config, ... }: { x = with config.flake.modules.nixos.a; [ ]; }")
+  eq(#result.uses, 1)
+  eq(result.uses[1].with_range, nil)
 end
 
 T["with block skips lexically bound names"] = function()
