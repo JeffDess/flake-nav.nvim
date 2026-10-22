@@ -45,8 +45,14 @@ require("flake-nav").setup({
   ignore = { ".git", ".direnv", "result", "result-*", "node_modules" },
   ignore_underscore = true,
   hover = { max_lines = 30 },
+  filter_with_definitions = true,
 })
 ```
+
+nixd answers a go-to-definition on a name inside `with fm.nixos; [ … ]` with
+the `with` keyword itself. When flake-nav finds the module, that location is
+dropped so the jump goes straight to the definition. Set
+`filter_with_definitions = false` to keep it.
 
 ## Usage
 
