@@ -1,0 +1,159 @@
+local M = {}
+
+local ATTRSETS = { attrset_expression = true, rec_attrset_expression = true }
+local PREFIX = { "flake", "modules" }
+
+local function text_of(node, src)
+  return vim.treesitter.get_node_text(node, src)
+end
+
+local function first(node, field)
+  return node and node:field(field)[1]
+end
+
+local function attr_name(node, src)
+  local kind = node:type()
+  if kind == "identifier" then
+    return text_of(node, src)
+  end
+  if kind == "string_expression" then
+    local parts = {}
+    for child in node:iter_children() do
+      if child:named() then
+        if child:type() ~= "string_fragment" then
+          return nil
+        end
+        parts[#parts + 1] = text_of(child, src)
+      end
+    end
+    return table.concat(parts)
+  end
+  return nil
+end
+
+local function attrpath(node, src)
+  if not node then
+    return nil
+  end
+  local segs = {}
+  for _, child in ipairs(node:field("attr")) do
+    local name = attr_name(child, src)
+    if not name then
+      return nil
+    end
+    segs[#segs + 1] = { name = name, node = child }
+  end
+  return segs
+end
+
+local function binding_set(node)
+  for child in node:iter_children() do
+    if child:type() == "binding_set" then
+      return child
+    end
+  end
+  return nil
+end
+
+local function bindings(node)
+  local set = binding_set(node)
+  return set and set:field("binding") or {}
+end
+
+local function unwrap(node)
+  while node do
+    local kind = node:type()
+    if
+      kind == "function_expression"
+      or kind == "let_expression"
+      or kind == "with_expression"
+      or kind == "assert_expression"
+    then
+      node = first(node, "body")
+    elseif kind == "parenthesized_expression" then
+      node = first(node, "expression")
+    else
+      return node
+    end
+  end
+  return nil
+end
+
+local function collect_defs(set_owner, path, src, out)
+  for _, b in ipairs(bindings(set_owner)) do
+    if b:type() == "binding" then
+      local segs = attrpath(first(b, "attrpath"), src)
+      if segs then
+        local names = { unpack(path) }
+        local descend = true
+        for i, seg in ipairs(segs) do
+          local depth = #path + i
+          names[depth] = seg.name
+          if depth <= #PREFIX and seg.name ~= PREFIX[depth] then
+            descend = false
+            break
+          end
+          if depth == 4 then
+            if i == #segs then
+              out[#out + 1] = {
+                kind = "module",
+                class = names[3],
+                name = seg.name,
+                range = { seg.node:range() },
+                scope_range = { b:range() },
+              }
+            end
+            descend = false
+            break
+          end
+        end
+        local value = first(b, "expression")
+        if descend and value and ATTRSETS[value:type()] then
+          collect_defs(value, names, src, out)
+        end
+      end
+    end
+  end
+end
+
+local function count_errors(node)
+  if node:type() == "ERROR" or node:missing() then
+    return 1
+  end
+  local total = 0
+  for child in node:iter_children() do
+    total = total + count_errors(child)
+  end
+  return total
+end
+
+function M.available()
+  local ok, loaded = pcall(vim.treesitter.language.add, "nix")
+  return ok and loaded == true
+end
+
+function M.parse(text)
+  local result = { defs = {}, uses = {}, errors = 0 }
+  local ok, parser = pcall(vim.treesitter.get_string_parser, text, "nix")
+  if not ok then
+    return result
+  end
+  local root = parser:parse()[1]:root()
+  local top = unwrap(first(root, "expression"))
+  if top and ATTRSETS[top:type()] then
+    collect_defs(top, {}, text, result.defs)
+  end
+  result.errors = count_errors(root)
+  return result
+end
+
+M._internal = {
+  text_of = text_of,
+  first = first,
+  attrpath = attrpath,
+  attr_name = attr_name,
+  bindings = bindings,
+  ATTRSETS = ATTRSETS,
+}
+
+return M
