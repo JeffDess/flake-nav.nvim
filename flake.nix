@@ -83,6 +83,7 @@
             editorconfig-checker.enable = true;
             stylua.enable = true;
             luacheck.enable = true;
+            typos.enable = true;
           };
 
           devShells.default = pkgs.mkShell {
