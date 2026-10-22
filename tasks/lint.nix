@@ -14,6 +14,15 @@
     '';
   };
 
+  lint_luacheck = mkTask {
+    description = "Lint Lua files with luacheck";
+    runtimeInputs = [ pkgs.luajitPackages.luacheck ];
+    run = ''
+      luacheck .
+      echo "✅ Lua linter passed"
+    '';
+  };
+
   lint = mkTask {
     description = "Run all linters";
     keepGoing = true;
@@ -21,11 +30,13 @@
       lint_nix.app
       lint_editor.app
       lint_stylua.app
+      lint_luacheck.app
     ];
     run = ''
       lint_nix
       lint_editor
       lint_stylua
+      lint_luacheck
     '';
   };
 }

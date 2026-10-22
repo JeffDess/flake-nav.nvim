@@ -82,6 +82,7 @@
             deadnix.enable = true;
             editorconfig-checker.enable = true;
             stylua.enable = true;
+            luacheck.enable = true;
           };
 
           devShells.default = pkgs.mkShell {
