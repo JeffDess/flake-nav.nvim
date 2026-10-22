@@ -51,7 +51,14 @@
           };
 
           formatter = pkgs.nixfmt-tree.override {
-            settings.global.excludes = [ "tests/fixtures/**" ];
+            runtimeInputs = [ pkgs.stylua ];
+            settings = {
+              global.excludes = [ "tests/fixtures/**" ];
+              formatter.stylua = {
+                command = "stylua";
+                includes = [ "*.lua" ];
+              };
+            };
           };
 
           pre-commit.settings.hooks = {
@@ -74,6 +81,7 @@
             statix.enable = true;
             deadnix.enable = true;
             editorconfig-checker.enable = true;
+            stylua.enable = true;
           };
 
           devShells.default = pkgs.mkShell {
