@@ -12,6 +12,10 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-parts.follows = "flake-parts";
     };
+    git-hooks = {
+      url = "github:cachix/git-hooks.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -28,6 +32,7 @@
 
       imports = [
         inputs.lets.flakeModules.default
+        inputs.git-hooks.flakeModule
       ];
 
       perSystem =
@@ -46,12 +51,23 @@
             settings.global.excludes = [ "tests/fixtures/**" ];
           };
 
+          pre-commit.settings.hooks = {
+            nixfmt = {
+              enable = true;
+              excludes = [ "^tests/fixtures/" ];
+            };
+            statix.enable = true;
+            deadnix.enable = true;
+          };
+
           devShells.default = pkgs.mkShell {
             inputsFrom = [ config.lets.devShell ];
             packages = [
               pkgs.neovim-unwrapped
               pkgs.lua-language-server
-            ];
+            ]
+            ++ config.pre-commit.settings.enabledPackages;
+            inherit (config.pre-commit) shellHook;
           };
         };
     };
