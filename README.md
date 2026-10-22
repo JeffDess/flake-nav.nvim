@@ -17,6 +17,10 @@ next to nixd or nil: Neovim merges the answers.
 - the tree-sitter `nix` parser (`:TSInstall nix`, or
   `pkgs.vimPlugins.nvim-treesitter-parsers.nix`)
 
+Recommended: [import-tree](https://github.com/vic/import-tree) in your
+`flake.nix`. It is optional, but with it flake-nav only offers what Nix
+actually loads (see [What gets indexed](#what-gets-indexed)).
+
 ## Installation
 
 lazy.nvim:
@@ -46,6 +50,7 @@ require("flake-nav").setup({
   ignore_underscore = true,
   hover = { max_lines = 30 },
   filter_with_definitions = true,
+  remap_store_paths = true,
 })
 ```
 
@@ -53,6 +58,41 @@ nixd answers a go-to-definition on a name inside `with fm.nixos; [ … ]` with
 the `with` keyword itself. When flake-nav finds the module, that location is
 dropped so the jump goes straight to the definition. Set
 `filter_with_definitions = false` to keep it.
+
+When nixd evaluates options with `builtins.getFlake`, it reads a copy of the
+flake in `/nix/store/<hash>-source`, so its option declarations point there.
+Locations in a store copy whose `flake.lock` matches the working tree are opened
+in the working tree instead. Set `remap_store_paths = false` to keep them.
+
+### Option navigation with nixd
+
+nixd jumps to option declarations (`modules.audio.enable = …`) once it knows the
+options of your hosts. Options only exist in the hosts that import their module,
+so merge every host:
+
+```lua
+vim.lsp.config("nixd", {
+  on_init = function(client)
+    local expr = ([[
+      let
+        hosts = (builtins.getFlake "%s").nixosConfigurations or { };
+        isOption = v: builtins.isAttrs v && (v._type or null) == "option";
+        merge = a: b:
+          if isOption a || isOption b || !(builtins.isAttrs a && builtins.isAttrs b) then a
+          else a // builtins.mapAttrs (n: v: if a ? ${n} then merge a.${n} v else v) b;
+      in
+      builtins.foldl' merge { } (map (h: h.options) (builtins.attrValues hosts))
+    ]]):format(client.root_dir)
+    client.settings = vim.tbl_deep_extend("force", client.settings or {}, {
+      nixd = { options = { nixos = { expr = expr } } },
+    })
+    client:notify("workspace/didChangeConfiguration", { settings = client.settings })
+  end,
+})
+```
+
+The settings are set in `on_init` because Neovim copies `settings` into the
+client before `before_init` runs.
 
 ## Usage
 
