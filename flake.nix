@@ -7,6 +7,11 @@
       url = "github:hercules-ci/flake-parts";
       inputs.nixpkgs-lib.follows = "nixpkgs";
     };
+    lets = {
+      url = "github:JeffDess/lets?ref=v0.3.0";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-parts.follows = "flake-parts";
+    };
   };
 
   outputs =
@@ -21,9 +26,15 @@
         "aarch64-darwin"
       ];
 
+      imports = [
+        inputs.lets.flakeModules.default
+      ];
+
       perSystem =
-        { pkgs, ... }:
+        { config, pkgs, ... }:
         {
+          lets.tasks = ./tasks;
+
           packages.default = pkgs.vimUtils.buildVimPlugin {
             pname = "flake-nav-nvim";
             inherit version;
@@ -36,6 +47,7 @@
           };
 
           devShells.default = pkgs.mkShell {
+            inputsFrom = [ config.lets.devShell ];
             packages = [
               pkgs.neovim-unwrapped
               pkgs.lua-language-server

@@ -20,6 +20,30 @@
         "type": "github"
       }
     },
+    "lets": {
+      "inputs": {
+        "flake-parts": [
+          "flake-parts"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1792637177,
+        "narHash": "sha256-2hx4Ys7yaw9bwHP1Kya/kEDP8YmrHun+dTU/Xtp9rWM=",
+        "owner": "JeffDess",
+        "repo": "lets",
+        "rev": "ccd41de0942dd58d8e517712fe540fdc63035918",
+        "type": "github"
+      },
+      "original": {
+        "owner": "JeffDess",
+        "ref": "v0.3.0",
+        "repo": "lets",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1792502884,
@@ -39,6 +63,7 @@
     "root": {
       "inputs": {
         "flake-parts": "flake-parts",
+        "lets": "lets",
         "nixpkgs": "nixpkgs"
       }
     }
