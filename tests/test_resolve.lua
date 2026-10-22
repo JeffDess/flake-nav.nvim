@@ -26,8 +26,9 @@ T["on a selection class"] = function()
 end
 
 T["on a with identifier"] = function()
-  eq(resolve.at(parsed, 6, 31), { kind = "module", class = "nixos", name = "base" })
-  eq(resolve.at(parsed, 6, 34), { kind = "module", class = "nixos", name = "base" })
+  local base = { kind = "module", class = "nixos", name = "base", with_range = { 6, 14, 6, 18 } }
+  eq(resolve.at(parsed, 6, 31), base)
+  eq(resolve.at(parsed, 6, 34), base)
 end
 
 T["on a definition name"] = function()
