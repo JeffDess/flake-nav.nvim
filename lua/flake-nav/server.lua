@@ -54,6 +54,39 @@ local function hover_markdown(index, defs, max_lines)
   return table.concat(blocks, "\n\n---\n\n")
 end
 
+local function lookup(index, path, pos)
+  index:refresh()
+  local parsed = index:parsed(path)
+  if not parsed then
+    return nil
+  end
+  local line = index:lines(path)[pos.line + 1] or ""
+  return resolve.at(parsed, pos.line, position.to_byte(line, pos.character))
+end
+
+local function index_for(path)
+  local found
+  for root, index in pairs(M.indexes) do
+    if vim.fs.relpath(root, path) and (not found or #root > #found.root) then
+      found = index
+    end
+  end
+  return found
+end
+
+function M.with_range(uri, pos)
+  local path = vim.uri_to_fname(uri)
+  local index = index_for(path)
+  if not index then
+    return nil
+  end
+  local ref = lookup(index, path, pos)
+  if not (ref and ref.with_range) or #index:definitions(ref.class, ref.name) == 0 then
+    return nil
+  end
+  return position.lsp_range(index:lines(path), ref.with_range)
+end
+
 function M.create(opts)
   return function(dispatchers, config)
     local root = config.root_dir
@@ -63,15 +96,7 @@ function M.create(opts)
     local next_id = 0
 
     local function target(params)
-      local path = vim.uri_to_fname(params.textDocument.uri)
-      index:refresh()
-      local parsed = index:parsed(path)
-      if not parsed then
-        return nil
-      end
-      local row = params.position.line
-      local line = index:lines(path)[row + 1] or ""
-      return resolve.at(parsed, row, position.to_byte(line, params.position.character))
+      return lookup(index, vim.uri_to_fname(params.textDocument.uri), params.position)
     end
 
     local handlers = {

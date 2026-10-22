@@ -5,6 +5,7 @@ local DEFAULTS = {
   ignore = { ".git", ".direnv", "result", "result-*", "node_modules" },
   ignore_underscore = true,
   hover = { max_lines = 30 },
+  filter_with_definitions = true,
 }
 
 M.config = vim.deepcopy(DEFAULTS)
@@ -20,6 +21,9 @@ local function merge(opts)
     config.ignore_underscore = opts.ignore_underscore
   end
   config.hover = vim.tbl_extend("force", config.hover, opts.hover or {})
+  if opts.filter_with_definitions ~= nil then
+    config.filter_with_definitions = opts.filter_with_definitions
+  end
   return config
 end
 
@@ -44,6 +48,17 @@ function M.setup(opts)
     end,
   })
   vim.lsp.enable("flake-nav")
+
+  local filter = require("flake-nav.filter")
+  filter.enabled = config.filter_with_definitions
+  vim.api.nvim_create_autocmd("LspAttach", {
+    group = vim.api.nvim_create_augroup("flake-nav-filter", { clear = true }),
+    callback = function(args)
+      if vim.bo[args.buf].filetype == "nix" then
+        filter.wrap(vim.lsp.get_client_by_id(args.data.client_id))
+      end
+    end,
+  })
 end
 
 return M
