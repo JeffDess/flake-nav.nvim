@@ -31,6 +31,10 @@
             doCheck = false;
           };
 
+          formatter = pkgs.nixfmt-tree.override {
+            settings.global.excludes = [ "tests/fixtures/**" ];
+          };
+
           devShells.default = pkgs.mkShell {
             packages = [
               pkgs.neovim-unwrapped
