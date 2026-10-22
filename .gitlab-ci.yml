@@ -1,0 +1,47 @@
+---
+stages:
+  - lint
+  - test
+
+default:
+  tags:
+    - nixos
+
+variables:
+  NIX_CONFIG: "experimental-features = nix-command flakes"
+
+format:
+  stage: lint
+  script:
+    - nix fmt
+    - git diff --exit-code
+
+lint:
+  stage: lint
+  script:
+    - nix run .#lint
+
+lint-commits:
+  stage: lint
+  variables:
+    GIT_DEPTH: 0
+  rules:
+    - if: $CI_MERGE_REQUEST_DRAFT == "true"
+      variables:
+        FROM: $CI_MERGE_REQUEST_DIFF_BASE_SHA
+        FIXUP: --allow-fixup
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      variables:
+        FROM: $CI_MERGE_REQUEST_DIFF_BASE_SHA
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      variables:
+        FROM: $CI_COMMIT_BEFORE_SHA
+  script:
+    - git fetch origin "$CI_DEFAULT_BRANCH:refs/remotes/origin/$CI_DEFAULT_BRANCH"
+    - git rev-parse --verify --quiet "$FROM^{commit}" >/dev/null || FROM=
+    - nix run .#lint_commits -- $FIXUP --from "$FROM" --to "$CI_COMMIT_SHA"
+
+flake-check:
+  stage: test
+  script:
+    - nix flake check -L --no-update-lock-file
