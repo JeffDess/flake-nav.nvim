@@ -26,7 +26,7 @@ T["on a selection class"] = function()
 end
 
 T["on a with identifier"] = function()
-  local base = { kind = "module", class = "nixos", name = "base", with_range = { 6, 14, 6, 18 } }
+  local base = { kind = "module", class = "nixos", name = "base", binder_range = { 6, 14, 6, 18 } }
   eq(resolve.at(parsed, 6, 31), base)
   eq(resolve.at(parsed, 6, 34), base)
 end

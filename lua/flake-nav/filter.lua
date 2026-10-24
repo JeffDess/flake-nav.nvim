@@ -76,7 +76,7 @@ function M.wrap(client)
         and method == DEFINITION
         and uri
         and params.position
-        and server.with_range(uri, params.position)
+        and server.binder_range(uri, params.position)
       local own = M.enabled
           and method == DEFINITION
           and uri

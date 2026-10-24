@@ -319,7 +319,7 @@ local function walk(node, scopes, src, uses)
             class = rest[1].name,
             name = name,
             range = { id:range() },
-            with_range = keyword,
+            binder_range = keyword,
           }
         end
       end

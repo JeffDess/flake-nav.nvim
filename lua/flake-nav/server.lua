@@ -216,17 +216,17 @@ function M.definition_locations(uri, pos)
   return out
 end
 
-function M.with_range(uri, pos)
+function M.binder_range(uri, pos)
   local path = vim.uri_to_fname(uri)
   local index = index_for(path)
   if not index then
     return nil
   end
   local ref = lookup(index, path, pos)
-  if not (ref and ref.with_range) or #index:definitions(ref.class, ref.name) == 0 then
+  if not (ref and ref.binder_range) or #index:definitions(ref.class, ref.name) == 0 then
     return nil
   end
-  return position.lsp_range(index:lines(path), ref.with_range)
+  return position.lsp_range(index:lines(path), ref.binder_range)
 end
 
 function M.create(opts)
