@@ -8,6 +8,7 @@ local DEFAULTS = {
   filter_with_definitions = true,
   remap_store_paths = true,
   input_links = true,
+  diagnostics = { unknown = true, unused = true },
 }
 
 M.config = vim.deepcopy(DEFAULTS)
@@ -23,6 +24,11 @@ local function merge(opts)
     config.ignore_underscore = opts.ignore_underscore
   end
   config.hover = vim.tbl_extend("force", config.hover, opts.hover or {})
+  if opts.diagnostics == false then
+    config.diagnostics = false
+  elseif type(opts.diagnostics) == "table" then
+    config.diagnostics = vim.tbl_extend("force", config.diagnostics, opts.diagnostics)
+  end
   for _, key in ipairs({ "filter_with_definitions", "remap_store_paths", "input_links" }) do
     if opts[key] ~= nil then
       config[key] = opts[key]
@@ -62,6 +68,7 @@ function M.setup(opts)
     end,
   })
   vim.lsp.enable("flake-nav")
+  require("flake-nav.server").set_diagnostics(config.diagnostics)
 
   local filter = require("flake-nav.filter")
   filter.enabled = config.filter_with_definitions

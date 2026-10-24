@@ -42,6 +42,45 @@ T["setup merges options"] = function()
   eq(flake_nav.config.ignore_underscore, true)
 end
 
+T["setup merges the diagnostics option"] = function()
+  local flake_nav = require("flake-nav")
+  flake_nav.setup()
+  eq(flake_nav.config.diagnostics, { unknown = true, unused = true })
+  flake_nav.setup({ diagnostics = { unused = false } })
+  eq(flake_nav.config.diagnostics, { unknown = true, unused = false })
+  flake_nav.setup({ diagnostics = false })
+  eq(flake_nav.config.diagnostics, false)
+  flake_nav.setup({ diagnostics = true })
+  eq(flake_nav.config.diagnostics, { unknown = true, unused = true })
+end
+
+T["diagnostics end to end"] = function()
+  require("flake-nav").setup()
+  local buf = open("modules/profiles/base.nix")
+  local found
+  vim.wait(2000, function()
+    found = vim.diagnostic.get(buf)
+    return #found > 0
+  end)
+  eq(#found, 1)
+  eq(found[1].message, "Module nixos.dev-rust is never used")
+  eq(found[1].severity, vim.diagnostic.severity.HINT)
+end
+
+T["setup turns diagnostics off for running clients"] = function()
+  require("flake-nav").setup()
+  local buf = open("modules/profiles/base.nix")
+  vim.wait(2000, function()
+    return #vim.diagnostic.get(buf) > 0
+  end)
+  require("flake-nav").setup({ diagnostics = false })
+  vim.wait(1000, function()
+    return #vim.diagnostic.get(buf) == 0
+  end)
+  eq(vim.diagnostic.get(buf), {})
+  require("flake-nav").setup()
+end
+
 T["attaches to nix buffers under a flake"] = function()
   require("flake-nav").setup()
   local _, client = open("modules/hosts/laptop.nix")
