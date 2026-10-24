@@ -1,8 +1,9 @@
 local Index = require("flake-nav.index")
 local resolve = require("flake-nav.resolve")
 local position = require("flake-nav.position")
+local diagnostics = require("flake-nav.diagnostics")
 
-local M = { indexes = {} }
+local M = { indexes = {}, servers = {} }
 
 local function location(index, entry)
   return {
@@ -229,6 +230,12 @@ function M.binder_range(uri, pos)
   return position.lsp_range(index:lines(path), ref.binder_range)
 end
 
+function M.set_diagnostics(cfg)
+  for _, configure in pairs(M.servers) do
+    configure(cfg)
+  end
+end
+
 function M.create(opts)
   return function(dispatchers, config)
     local root = config.root_dir
@@ -236,6 +243,59 @@ function M.create(opts)
     M.indexes[root] = index
     local closing = false
     local next_id = 0
+    local cfg = opts.diagnostics
+    local pending, stale = false, false
+
+    local function publish(uri, list)
+      dispatchers.notification("textDocument/publishDiagnostics", { uri = uri, diagnostics = list })
+    end
+
+    local function republish()
+      pending = false
+      if closing then
+        return
+      end
+      if stale then
+        stale = false
+        index:refresh()
+      end
+      local context = diagnostics.context(index)
+      for path in pairs(index.docs) do
+        local ok, list = pcall(diagnostics.compute, index, path, cfg, context)
+        if not ok then
+          vim.lsp.log.error("flake-nav: diagnostics failed", path, list)
+        end
+        publish(vim.uri_from_fname(path), ok and list or {})
+      end
+    end
+
+    local function changed(disk)
+      stale = stale or disk
+      if cfg and (cfg.unknown or cfg.unused) and not pending then
+        pending = true
+        vim.schedule(function()
+          local ok, err = pcall(republish)
+          if not ok then
+            vim.lsp.log.error("flake-nav: diagnostics failed", err)
+          end
+        end)
+      end
+    end
+
+    index.on_source = function()
+      changed(false)
+    end
+
+    M.servers[root] = function(new)
+      cfg = new
+      if cfg and (cfg.unknown or cfg.unused) then
+        changed(true)
+      else
+        for path in pairs(index.docs) do
+          publish(vim.uri_from_fname(path), {})
+        end
+      end
+    end
 
     local function target(params)
       return lookup(index, vim.uri_to_fname(params.textDocument.uri), params.position)
@@ -327,17 +387,24 @@ function M.create(opts)
     local notifications = {
       ["textDocument/didOpen"] = function(params)
         index:set_document(vim.uri_to_fname(params.textDocument.uri), params.textDocument.text)
+        changed(true)
       end,
       ["textDocument/didChange"] = function(params)
         local changes = params.contentChanges
         index:set_document(vim.uri_to_fname(params.textDocument.uri), changes[#changes].text)
+        changed()
       end,
       ["textDocument/didClose"] = function(params)
         index:clear_document(vim.uri_to_fname(params.textDocument.uri))
+        if cfg then
+          publish(params.textDocument.uri, {})
+        end
+        changed(true)
       end,
       ["exit"] = function()
         closing = true
         M.indexes[root] = nil
+        M.servers[root] = nil
         dispatchers.on_exit(0, 0)
       end,
     }
@@ -376,6 +443,7 @@ function M.create(opts)
       terminate = function()
         closing = true
         M.indexes[root] = nil
+        M.servers[root] = nil
       end,
     }
   end

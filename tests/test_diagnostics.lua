@@ -223,6 +223,73 @@ T["a shared context gives the same diagnostics"] = function()
   vim.fn.delete(root, "rf")
 end
 
+T["modules from flake modules of inputs are known"] = function()
+  local nar = "sha256-SBL/761cGhDjEWW9bNBUg2khQSMDkIqj5IlYYSVeOk0="
+  local host = {
+    "{ config, ... }:",
+    "{ x = with config.flake.modules.nixos; [ shared typo ]; }",
+  }
+  local idx, root = project({
+    ["flake.nix"] = { '{ inputs.lib.url = "github:a/lib"; outputs = _: { }; }' },
+    ["flake.lock"] = {
+      '{ "nodes": { "root": { "inputs": { "lib": "lib" } },',
+      '  "lib": { "locked": { "narHash": "' .. nar .. '" } } },',
+      '  "root": "root", "version": 7 }',
+    },
+    ["module.nix"] = { "{ inputs, ... }: { imports = [ inputs.lib.flakeModules.default ]; }" },
+    ["host.nix"] = host,
+  })
+  local store = vim.fn.tempname()
+  local source = require("flake-nav.store").source(nar, store)
+  vim.fn.mkdir(source .. "/modules", "p")
+  vim.fn.writefile({ "{ flake.modules.nixos.shared = { }; }" }, source .. "/modules/shared.nix")
+  idx.store_dir = store
+  local loaded = false
+  idx.on_source = function()
+    loaded = true
+  end
+  idx:refresh()
+  eq(idx.external, {})
+  vim.wait(1000, function()
+    return loaded
+  end)
+  eq(
+    vim.tbl_map(function(d)
+      return d.message
+    end, diagnostics.compute(idx, vim.fs.joinpath(root, "host.nix"), { unknown = true })),
+    { "Unknown module nixos.typo" }
+  )
+  local defs = idx:definitions("nixos", "shared")
+  eq(#defs, 1)
+  eq(defs[1].path, source .. "/modules/shared.nix")
+  vim.fn.delete(root, "rf")
+  vim.fn.delete(store, "rf")
+end
+
+T["syntax errors in a file soften the others"] = function()
+  local base = { "{ flake.modules.nixos = { base = { }; old = { }; }; }" }
+  local idx, root = project({
+    ["flake.nix"] = { "{ outputs = _: { }; }" },
+    ["base.nix"] = base,
+    ["host.nix"] = HOST,
+  })
+  local function at(rel)
+    return vim.tbl_map(function(d)
+      return { d.severity, d.message }
+    end, diagnostics.compute(idx, vim.fs.joinpath(root, rel), { unknown = true, unused = true }))
+  end
+  idx:set_document(vim.fs.joinpath(root, "base.nix"), "{ flake.modules.nixos.base = { }")
+  local information = vim.lsp.protocol.DiagnosticSeverity.Information
+  eq(at("host.nix"), {
+    { information, "Unknown module nixos.base (a file has syntax errors)" },
+    { information, "Unknown module nixos.missing (a file has syntax errors)" },
+  })
+  idx:set_document(vim.fs.joinpath(root, "base.nix"), table.concat(base, "\n"))
+  idx:set_document(vim.fs.joinpath(root, "host.nix"), "{ config, ... }: { x = [ ")
+  eq(at("base.nix"), {})
+  vim.fn.delete(root, "rf")
+end
+
 T["nothing outside the index scope"] = function()
   local idx, root = project({
     ["flake.nix"] = { "{ outputs = _: { }; }" },
