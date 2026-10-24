@@ -468,6 +468,66 @@ function M.import_tree(text)
   return result
 end
 
+local function static_string(node, src)
+  return node and node:type() == "string_expression" and attr_name(node, src) or nil
+end
+
+local function input_link(value, src)
+  if not value then
+    return nil
+  end
+  if value:type() == "string_expression" then
+    local ref = static_string(value, src)
+    return ref and require("flake-nav.flakeref").to_url(ref)
+  end
+  if not ATTRSETS[value:type()] then
+    return nil
+  end
+  local attrs = {}
+  for _, b in ipairs(bindings(value)) do
+    local segs = b:type() == "binding" and attrpath(first(b, "attrpath"), src)
+    if segs and #segs == 1 then
+      attrs[segs[1].name] = static_string(first(b, "expression"), src)
+    end
+  end
+  if attrs.type then
+    return require("flake-nav.flakeref").from_attrs(attrs)
+  end
+  return nil
+end
+
+local function collect_inputs(owner, path, src, out)
+  for _, b in ipairs(bindings(owner)) do
+    local segs = b:type() == "binding" and attrpath(first(b, "attrpath"), src)
+    local names = { unpack(path) }
+    for _, seg in ipairs(segs or {}) do
+      names[#names + 1] = seg.name
+    end
+    local value = first(b, "expression")
+    if segs and value and names[1] == "inputs" then
+      local link = (#names == 2 or (#names == 3 and names[3] == "url")) and input_link(value, src)
+      if link then
+        out[#out + 1] = { url = link, range = { value:range() } }
+      elseif #names < 3 and ATTRSETS[value:type()] then
+        collect_inputs(value, names, src, out)
+      end
+    end
+  end
+end
+
+function M.inputs(text)
+  local out = {}
+  local ok, parser = pcall(vim.treesitter.get_string_parser, text, "nix")
+  if not ok then
+    return out
+  end
+  local top = unwrap(first(parser:parse()[1]:root(), "expression"))
+  if top and ATTRSETS[top:type()] then
+    collect_inputs(top, {}, text, out)
+  end
+  return out
+end
+
 function M.available()
   local ok, loaded = pcall(vim.treesitter.language.add, "nix")
   return ok and loaded == true
