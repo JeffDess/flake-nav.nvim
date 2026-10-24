@@ -7,6 +7,7 @@ local DEFAULTS = {
   hover = { max_lines = 30 },
   filter_with_definitions = true,
   remap_store_paths = true,
+  input_links = true,
 }
 
 M.config = vim.deepcopy(DEFAULTS)
@@ -22,7 +23,7 @@ local function merge(opts)
     config.ignore_underscore = opts.ignore_underscore
   end
   config.hover = vim.tbl_extend("force", config.hover, opts.hover or {})
-  for _, key in ipairs({ "filter_with_definitions", "remap_store_paths" }) do
+  for _, key in ipairs({ "filter_with_definitions", "remap_store_paths", "input_links" }) do
     if opts[key] ~= nil then
       config[key] = opts[key]
     end
@@ -60,6 +61,23 @@ function M.setup(opts)
     callback = function(args)
       if vim.bo[args.buf].filetype == "nix" then
         filter.wrap(vim.lsp.get_client_by_id(args.data.client_id))
+      end
+    end,
+  })
+
+  local links = require("flake-nav.links")
+  links.enabled = config.input_links
+  local links_group = vim.api.nvim_create_augroup("flake-nav-links", { clear = true })
+  vim.api.nvim_create_autocmd({ "LspAttach", "LspDetach" }, {
+    group = links_group,
+    callback = function(args)
+      local client = vim.lsp.get_client_by_id(args.data.client_id)
+      if client and client.name == "flake-nav" then
+        if args.event == "LspAttach" then
+          links.attach(args.buf)
+        else
+          links.detach(args.buf)
+        end
       end
     end,
   })
