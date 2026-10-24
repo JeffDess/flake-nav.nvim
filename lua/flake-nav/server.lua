@@ -223,7 +223,7 @@ function M.binder_range(uri, pos)
     return nil
   end
   local ref = lookup(index, path, pos)
-  if not (ref and ref.binder_range) or #index:definitions(ref.class, ref.name) == 0 then
+  if not (ref and ref.binder_range) or #definitions(index, ref) == 0 then
     return nil
   end
   return position.lsp_range(index:lines(path), ref.binder_range)

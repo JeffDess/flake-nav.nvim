@@ -228,4 +228,45 @@ T["remap_store_paths = false keeps store locations"] = function()
   vim.fn.delete(tmp, "rf")
 end
 
+local inputs_fixture = vim.fs.joinpath(vim.fn.getcwd(), "tests/fixtures/inputs")
+
+local function open_flake_with_fake(answer)
+  vim.cmd.edit(vim.fs.joinpath(inputs_fixture, "flake.nix"))
+  local buf = vim.api.nvim_get_current_buf()
+  vim.lsp.start(
+    { name = "fake-nixd", cmd = fake_server(answer), root_dir = inputs_fixture },
+    { bufnr = buf }
+  )
+  vim.wait(2000, function()
+    local clients = vim.lsp.get_clients({ bufnr = buf })
+    for _, client in ipairs(clients) do
+      if not client.initialized then
+        return false
+      end
+    end
+    return #clients == 2
+  end)
+  return buf
+end
+
+local function column(row, word)
+  local line = vim.fn.readfile(vim.fs.joinpath(inputs_fixture, "flake.nix"))[row + 1]
+  return line:find(word, 1, true) - 1
+end
+
+T["drops jumps to an outputs formal when flake-nav resolves the input"] = function()
+  require("flake-nav").setup()
+  local formal = column(16, "nixpkgs")
+  local buf = open_flake_with_fake(function(params)
+    return {
+      uri = params.textDocument.uri,
+      range = {
+        start = { line = 16, character = formal },
+        ["end"] = { line = 16, character = formal + #"nixpkgs" },
+      },
+    }
+  end)
+  eq(definitions(buf, 18, column(18, "nixpkgs")), { ["flake-nav"] = 1, ["fake-nixd"] = 0 })
+end
+
 return T
