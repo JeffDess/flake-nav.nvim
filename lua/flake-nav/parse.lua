@@ -474,7 +474,7 @@ function M.available()
 end
 
 function M.parse(text)
-  local result = { defs = {}, uses = {}, errors = 0 }
+  local result = { defs = {}, uses = {}, errors = 0, options = { decls = {}, uses = {} } }
   local ok, parser = pcall(vim.treesitter.get_string_parser, text, "nix")
   if not ok then
     return result
@@ -485,6 +485,7 @@ function M.parse(text)
     collect_defs(top, {}, text, result.defs)
   end
   walk(root, {}, text, result.uses)
+  result.options = require("flake-nav.options").collect(root, text)
   result.errors = count_errors(root)
   return result
 end
@@ -495,6 +496,7 @@ M._internal = {
   attrpath = attrpath,
   attr_name = attr_name,
   bindings = bindings,
+  unwrap = unwrap,
   ATTRSETS = ATTRSETS,
 }
 
