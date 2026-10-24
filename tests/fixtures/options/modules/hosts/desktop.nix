@@ -12,5 +12,7 @@ in
         audio.enable = true;
         audio.backend = lib.mkDefault "pulse";
       };
+
+      home-manager.users.demo.modules.editor.theme = "light";
     };
 }
