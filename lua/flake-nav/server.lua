@@ -37,12 +37,19 @@ local function excerpt(index, entry, max_lines)
   return lines
 end
 
+local function title(item)
+  if item.kind == "option" then
+    return ("`%s` (%s option)"):format(item.path, item.class or "unknown")
+  end
+  return ("`%s.%s`"):format(item.class, item.name)
+end
+
 local function hover_markdown(index, defs, max_lines)
   local blocks = {}
   for _, entry in ipairs(defs) do
     local rel = vim.fs.relpath(index.root, entry.path) or entry.path
     blocks[#blocks + 1] = table.concat({
-      ("`%s.%s`"):format(entry.item.class, entry.item.name),
+      title(entry.item),
       "",
       ("`%s:%d`"):format(rel, entry.item.range[1] + 1),
       "",
@@ -77,6 +84,20 @@ end
 function M.root_for(uri)
   local index = index_for(vim.uri_to_fname(uri))
   return index and index.root
+end
+
+local function definitions(index, ref)
+  if ref.kind == "option" then
+    return index:option_definitions(ref.class, ref.path)
+  end
+  return index:definitions(ref.class, ref.name)
+end
+
+local function references(index, ref, include)
+  if ref.kind == "option" then
+    return index:option_references(ref.class, ref.path, include)
+  end
+  return index:references(ref.class, ref.name, include)
 end
 
 function M.with_range(uri, pos)
@@ -125,8 +146,12 @@ function M.create(opts)
         if not ref then
           return nil
         end
+        local defs = definitions(index, ref)
+        if ref.kind == "option" and #defs == 0 then
+          return nil
+        end
         local out = {}
-        for _, entry in ipairs(index:definitions(ref.class, ref.name)) do
+        for _, entry in ipairs(defs) do
           out[#out + 1] = location(index, entry)
         end
         return out
@@ -137,8 +162,12 @@ function M.create(opts)
           return nil
         end
         local include = params.context and params.context.includeDeclaration or false
+        local found = references(index, ref, include)
+        if ref.kind == "option" and #found == 0 then
+          return nil
+        end
         local out = {}
-        for _, entry in ipairs(index:references(ref.class, ref.name, include)) do
+        for _, entry in ipairs(found) do
           out[#out + 1] = location(index, entry)
         end
         return out
@@ -148,7 +177,7 @@ function M.create(opts)
         if not ref then
           return nil
         end
-        local defs = index:definitions(ref.class, ref.name)
+        local defs = definitions(index, ref)
         if #defs == 0 then
           return nil
         end
