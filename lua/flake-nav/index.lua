@@ -106,6 +106,14 @@ function Index:scan()
   return found
 end
 
+function Index:parse_file(path, text)
+  local parsed = parse.parse(text)
+  if vim.fs.basename(path) == "flake.nix" and path ~= self:flake_path() then
+    parsed.inputs = { decls = {}, uses = {} }
+  end
+  return parsed
+end
+
 function Index:refresh()
   local seen = {}
   for _, path in ipairs(self:scan()) do
@@ -116,7 +124,7 @@ function Index:refresh()
       if not entry or entry.mtime ~= stamp then
         local text = read(path)
         if text then
-          self.files[path] = { mtime = stamp, parsed = parse.parse(text) }
+          self.files[path] = { mtime = stamp, parsed = self:parse_file(path, text) }
           self.skipped[path] = nil
         else
           self.files[path] = nil
@@ -142,13 +150,13 @@ function Index:reset()
   self.files = {}
   self.skipped = {}
   for path, text in pairs(self.docs) do
-    self.files[path] = { parsed = parse.parse(text) }
+    self.files[path] = { parsed = self:parse_file(path, text) }
   end
 end
 
 function Index:set_document(path, text)
   self.docs[path] = text
-  self.files[path] = { parsed = parse.parse(text) }
+  self.files[path] = { parsed = self:parse_file(path, text) }
 end
 
 function Index:clear_document(path)
@@ -237,6 +245,92 @@ function Index:option_references(class, path, include_declaration)
     table.sort(out, by_location)
   end
   return out
+end
+
+function Index:flake_path()
+  return vim.fs.joinpath(self.root, "flake.nix")
+end
+
+function Index:input_declaration(name)
+  local parsed = self:parsed(self:flake_path())
+  for _, decl in ipairs(parsed and parsed.inputs.decls or {}) do
+    if decl.name == name then
+      return decl
+    end
+  end
+  return nil
+end
+
+function Index:input_definitions(name)
+  local decl = self:input_declaration(name)
+  if not decl or not decl.range then
+    return {}
+  end
+  return { { path = self:flake_path(), item = { kind = "input", name = name, range = decl.range } } }
+end
+
+function Index:input_references(name, include_declaration)
+  local decl = self:input_declaration(name)
+  if not decl then
+    return {}
+  end
+  local flake = self:flake_path()
+  local out = {}
+  for path, entry in pairs(self.files) do
+    if self.scope[path] then
+      for _, use in ipairs(entry.parsed.inputs.uses) do
+        if use.name == name and (path == flake or not use.flake_only) then
+          out[#out + 1] = { path = path, item = use }
+        end
+      end
+    end
+  end
+  if include_declaration then
+    for _, range in ipairs(decl.sites) do
+      out[#out + 1] = { path = flake, item = { kind = "input", name = name, range = range } }
+    end
+  end
+  table.sort(out, by_location)
+  return out
+end
+
+function Index:lock()
+  local path = vim.fs.joinpath(self.root, "flake.lock")
+  local stamp = mtime(path)
+  if not self.lock_cache or self.lock_cache.mtime ~= stamp then
+    local text = stamp and read(path)
+    local ok, decoded = pcall(vim.json.decode, text or "")
+    self.lock_cache = { mtime = stamp, data = ok and type(decoded) == "table" and decoded or nil }
+  end
+  return self.lock_cache.data
+end
+
+-- NOTE: Lock file format: https://nix.dev/manual/nix/latest/command-ref/new-cli/nix3-flake#lock-files
+function Index:locked(name)
+  local lock = self:lock()
+  local nodes = lock and lock.nodes
+  if type(nodes) ~= "table" then
+    return nil
+  end
+  local function follow(path)
+    local key = lock.root or "root"
+    for _, step in ipairs(path) do
+      local node = nodes[key]
+      local ref = node and node.inputs and node.inputs[step]
+      if type(ref) == "table" then
+        key = follow(ref)
+      else
+        key = ref
+      end
+      if not key then
+        return nil
+      end
+    end
+    return key
+  end
+  local key = follow({ name })
+  local node = key and nodes[key]
+  return node and node.locked or nil
 end
 
 function Index:stats()
