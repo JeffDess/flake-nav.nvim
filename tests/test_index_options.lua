@@ -78,4 +78,10 @@ T["no references for an undeclared path"] = function()
   eq(index():option_references("nixos", "services.pipewire.enable", true), {})
 end
 
+T["stats count option declarations and usages"] = function()
+  local stats = index():stats()
+  eq(stats.option_declarations, 9)
+  eq(stats.option_uses > 0, true)
+end
+
 return T

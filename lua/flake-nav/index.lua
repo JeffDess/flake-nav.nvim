@@ -245,6 +245,8 @@ function Index:stats()
     files = 0,
     definitions = 0,
     uses = 0,
+    option_declarations = 0,
+    option_uses = 0,
     skipped = {},
     with_errors = {},
     scope = { origin = self.origin, paths = vim.deepcopy(self.included) },
@@ -254,6 +256,8 @@ function Index:stats()
       stats.files = stats.files + 1
       stats.definitions = stats.definitions + #entry.parsed.defs
       stats.uses = stats.uses + #entry.parsed.uses
+      stats.option_declarations = stats.option_declarations + #entry.parsed.options.decls
+      stats.option_uses = stats.option_uses + #entry.parsed.options.uses
       if entry.parsed.errors > 0 then
         stats.with_errors[#stats.with_errors + 1] = path
       end

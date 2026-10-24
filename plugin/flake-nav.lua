@@ -24,6 +24,8 @@ vim.api.nvim_create_user_command("FlakeNav", function(cmd)
     "files: " .. stats.files,
     "definitions: " .. stats.definitions,
     "uses: " .. stats.uses,
+    "option declarations: " .. stats.option_declarations,
+    "option uses: " .. stats.option_uses,
   }
   for _, path in ipairs(stats.skipped) do
     lines[#lines + 1] = "unreadable: " .. path

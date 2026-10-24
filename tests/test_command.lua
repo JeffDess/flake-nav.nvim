@@ -39,6 +39,8 @@ T[":FlakeNav info and reindex"] = function()
   eq(messages[2]:find("definitions: 5", 1, true) ~= nil, true)
   eq(messages[2]:find("uses: 6", 1, true) ~= nil, true)
   eq(messages[2]:find("scope: import-tree (modules)", 1, true) ~= nil, true)
+  eq(messages[2]:find("option declarations: %d+") ~= nil, true)
+  eq(messages[2]:find("option uses: %d+") ~= nil, true)
 end
 
 return T
