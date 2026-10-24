@@ -8,7 +8,7 @@
       inputs.nixpkgs-lib.follows = "nixpkgs";
     };
     lets = {
-      url = "github:JeffDess/lets?ref=v0.3.0";
+      url = "github:JeffDess/lets";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-parts.follows = "flake-parts";
     };
