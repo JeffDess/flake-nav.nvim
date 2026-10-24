@@ -40,6 +40,19 @@ function M.attach(buf)
   M.refresh(buf)
 end
 
+function M.url_at(buf, row, col)
+  local marks = vim.api.nvim_buf_get_extmarks(buf, ns, { row, col }, { row, col }, {
+    details = true,
+    overlap = true,
+  })
+  for _, mark in ipairs(marks) do
+    if mark[4].url then
+      return mark[4].url
+    end
+  end
+  return nil
+end
+
 function M.detach(buf)
   pcall(vim.api.nvim_del_augroup_by_name, group(buf))
   if vim.api.nvim_buf_is_valid(buf) then

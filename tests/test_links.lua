@@ -73,4 +73,36 @@ T["input_links = false disables them"] = function()
   eq(vim.tbl_contains(urls, "https://github.com/cachix/git-hooks.nix"), false)
 end
 
+local function capture(fn)
+  local opened, notes = {}, {}
+  local ui_open, notify = vim.ui.open, vim.notify
+  vim.ui.open = function(url)
+    opened[#opened + 1] = url
+  end
+  vim.notify = function(msg, level)
+    notes[#notes + 1] = { msg, level }
+  end
+  local ok, err = pcall(fn)
+  vim.ui.open, vim.notify = ui_open, notify
+  assert(ok, err)
+  return opened, notes
+end
+
+T["open_input opens the input under the cursor"] = function()
+  require("flake-nav").setup()
+  open("flake.nix")
+  urls_at(1, "git-hooks")
+  local opened = capture(require("flake-nav").open_input)
+  eq(opened, { "https://github.com/cachix/git-hooks.nix" })
+end
+
+T["open_input warns away from an input"] = function()
+  require("flake-nav").setup()
+  open("flake.nix")
+  urls_at(2, "outputs")
+  local opened, notes = capture(require("flake-nav").open_input)
+  eq(opened, {})
+  eq(notes, { { "flake-nav: no flake input under the cursor", vim.log.levels.WARN } })
+end
+
 return T

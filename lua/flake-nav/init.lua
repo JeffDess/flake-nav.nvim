@@ -31,6 +31,16 @@ local function merge(opts)
   return config
 end
 
+function M.open_input()
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local url = require("flake-nav.links").url_at(0, cursor[1] - 1, cursor[2])
+  if not url then
+    vim.notify("flake-nav: no flake input under the cursor", vim.log.levels.WARN)
+    return
+  end
+  vim.ui.open(url)
+end
+
 function M.setup(opts)
   local config = merge(opts)
   M.config = config
