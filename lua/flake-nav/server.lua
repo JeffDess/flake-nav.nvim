@@ -98,6 +98,9 @@ function M.root_for(uri)
 end
 
 local function definitions(index, ref)
+  if ref.kind == "input" then
+    return index:input_definitions(ref.name)
+  end
   if ref.kind == "option" then
     return index:option_definitions(ref.class, ref.path)
   end
@@ -105,10 +108,98 @@ local function definitions(index, ref)
 end
 
 local function references(index, ref, include)
+  if ref.kind == "input" then
+    return index:input_references(ref.name, include)
+  end
   if ref.kind == "option" then
     return index:option_references(ref.class, ref.path, include)
   end
   return index:references(ref.class, ref.name, include)
+end
+
+local function local_input_path(index, decl)
+  local path, dir
+  if decl.attrs and decl.attrs.type == "path" then
+    path, dir = decl.attrs.path, decl.attrs.dir
+  elseif decl.ref and decl.ref:match("^path:") then
+    path = decl.ref:sub(6)
+  elseif decl.ref and decl.ref:match("^git%+file:") then
+    path = decl.ref:gsub("^git%+file:", ""):gsub("^//", "")
+  end
+  if path then
+    local query
+    path, query = path:match("^([^?]*)%??(.*)$")
+    dir = dir or ("&" .. query):match("&dir=([^&]+)")
+  end
+  if not path or path == "" then
+    return nil
+  end
+  if path:sub(1, 1) ~= "/" then
+    path = vim.fs.joinpath(index.root, path)
+  end
+  if dir then
+    path = vim.fs.joinpath(path, dir)
+  end
+  path = vim.fs.normalize(path)
+  local stat = vim.uv.fs_stat(path)
+  if stat and stat.type == "directory" then
+    local flake = vim.fs.joinpath(path, "flake.nix")
+    return vim.uv.fs_stat(flake) and flake or nil
+  end
+  return stat and path or nil
+end
+
+local function on_declaration(decl, row, col)
+  local ranges = vim.list_extend({}, decl.sites)
+  ranges[#ranges + 1] = decl.ref_range
+  ranges[#ranges + 1] = decl.attrs_range
+  for _, range in ipairs(ranges) do
+    if resolve.contains(range, row, col) then
+      return true
+    end
+  end
+  return false
+end
+
+local function input_hover(index, name)
+  local decl = index:input_declaration(name)
+  if not decl or not decl.range then
+    return nil
+  end
+  local flakeref = require("flake-nav.flakeref")
+  local items = {}
+  if decl.ref then
+    items[#items + 1] = ("`%s`"):format(decl.ref)
+  end
+  local url = decl.attrs and flakeref.from_attrs(decl.attrs)
+    or (decl.ref and flakeref.to_url(decl.ref))
+  if url then
+    items[#items + 1] = ("<%s>"):format(url)
+  end
+  if decl.follows_target then
+    items[#items + 1] = ('`follows = "%s"`'):format(decl.follows_target)
+  end
+  local locked = index:locked(name)
+  if locked and type(locked.rev) == "string" then
+    local item = ("locked `%s`"):format(locked.rev:sub(1, 7))
+    if type(locked.lastModified) == "number" then
+      item = item .. (" (%s)"):format(os.date("!%Y-%m-%d", locked.lastModified))
+    end
+    items[#items + 1] = item
+  end
+  for _, follows in ipairs(decl.follows) do
+    items[#items + 1] = ('`inputs.%s.follows = "%s"`'):format(follows.input, follows.target)
+  end
+  local lines = {
+    ("`inputs.%s` (flake input)"):format(name),
+    "",
+    ("`flake.nix:%d`"):format(decl.range[1] + 1),
+    "",
+  }
+  for _, item in ipairs(items) do
+    lines[#lines + 1] = "- " .. item
+  end
+  return table.concat(lines, "\n")
 end
 
 function M.definition_locations(uri, pos)
@@ -171,8 +262,22 @@ function M.create(opts)
         if not ref then
           return nil
         end
+        local path = vim.uri_to_fname(params.textDocument.uri)
+        local decl = ref.kind == "input" and index:input_declaration(ref.name)
+        if decl and path == index:flake_path() then
+          local line = index:lines(path)[params.position.line + 1] or ""
+          local col = position.to_byte(line, params.position.character)
+          local opened = on_declaration(decl, params.position.line, col)
+            and local_input_path(index, decl)
+          if opened then
+            local start = { line = 0, character = 0 }
+            return {
+              { uri = vim.uri_from_fname(opened), range = { start = start, ["end"] = start } },
+            }
+          end
+        end
         local defs = definitions(index, ref)
-        if ref.kind == "option" and #defs == 0 then
+        if ref.kind ~= "module" and #defs == 0 then
           return nil
         end
         local out = {}
@@ -188,7 +293,7 @@ function M.create(opts)
         end
         local include = params.context and params.context.includeDeclaration or false
         local found = references(index, ref, include)
-        if ref.kind == "option" and #found == 0 then
+        if ref.kind ~= "module" and #found == 0 then
           return nil
         end
         local out = {}
@@ -201,6 +306,10 @@ function M.create(opts)
         local ref = target(params)
         if not ref then
           return nil
+        end
+        if ref.kind == "input" then
+          local value = input_hover(index, ref.name)
+          return value and { contents = { kind = "markdown", value = value } } or nil
         end
         local defs = definitions(index, ref)
         if #defs == 0 then

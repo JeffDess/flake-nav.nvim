@@ -16,6 +16,8 @@ local function contains(range, row, col)
   return true
 end
 
+M.contains = contains
+
 function M.at(parsed, row, col)
   for _, use in ipairs(parsed.uses) do
     if contains(use.range, row, col) or contains(use.class_range, row, col) then
