@@ -2,6 +2,31 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.2.0] - 2026-10-24
+
+### Features
+
+- *(options)* Read home-manager user and shared modules
+- *(options)* Read inline modules in imports lists
+- *(flakeref)* Convert flake references to web URLs
+- *(parse)* Find flake input references
+- *(links)* Open flake inputs with gx
+- *(flakeref)* Open git+ssh references on the https site of their host
+- *(flakeref)* Open forge tarballs on their repository
+- *(init)* Open the flake input under the cursor with open_input()
+
+### Bug Fixes
+
+- *(flakeref)* Open scp-like git+ssh references on their host
+
+### Documentation
+
+- *(readme)* Document home-manager and inline module contexts
+- *(readme)* Document gx on flake inputs
+- *(readme)* Document gx on git+ssh inputs
+- *(readme)* Document gx on tarball and file inputs
+- *(readme)* List Neovim default mappings and open_input()
+
 ## [0.1.0] - 2026-10-24
 
 ### Features
