@@ -2,14 +2,47 @@ local M = {}
 
 -- NOTE: Flake reference syntax: https://nix.dev/manual/nix/latest/command-ref/new-cli/nix3-flake#flake-references
 local FORGES = {
-  github = { host = "github.com", tree = "/tree/", commit = "/commit/" },
-  gitlab = { host = "gitlab.com", tree = "/-/tree/", commit = "/-/commit/" },
-  sourcehut = { host = "git.sr.ht", tree = "/tree/", commit = "/commit/" },
+  github = {
+    host = "github.com",
+    tree = "/tree/",
+    commit = "/commit/",
+    archive = "^([^/]+)/([^/]+)/archive/(.+)$",
+  },
+  gitlab = {
+    host = "gitlab.com",
+    tree = "/-/tree/",
+    commit = "/-/commit/",
+    archive = "^(.+)/([^/]+)/%-/archive/([^/]+)/",
+  },
+  sourcehut = {
+    host = "git.sr.ht",
+    tree = "/tree/",
+    commit = "/commit/",
+    archive = "^([^/]+)/([^/]+)/archive/(.+)$",
+  },
 }
 
-local GIT = { ["git+https"] = "https", ["git+http"] = "http", ["git+ssh"] = "https" }
-local KNOWN_HOSTS =
-  { ["github.com"] = "github", ["gitlab.com"] = "gitlab", ["git.sr.ht"] = "sourcehut" }
+local ARCHIVE_EXTENSIONS = {
+  "%.tar%.gz$",
+  "%.tar%.xz$",
+  "%.tar%.bz2$",
+  "%.tar%.zst$",
+  "%.tgz$",
+  "%.tar$",
+  "%.zip$",
+}
+
+local GIT = {
+  ["git+https"] = "https",
+  ["git+http"] = "http",
+  ["git+ssh"] = "https",
+}
+
+local KNOWN_HOSTS = {
+  ["github.com"] = "github",
+  ["gitlab.com"] = "gitlab",
+  ["git.sr.ht"] = "sourcehut",
+}
 
 local function query(text)
   local params = {}
@@ -37,6 +70,30 @@ local function forge_url(kind, owner, repo, ref, params)
     return base .. forge.tree .. ref
   end
   return base
+end
+
+local function strip_archive(path)
+  for _, ext in ipairs(ARCHIVE_EXTENSIONS) do
+    local stripped, n = path:gsub(ext, "")
+    if n > 0 then
+      return stripped
+    end
+  end
+  return nil
+end
+
+local function archive_url(url)
+  local host, path, params = url:match("^https?://([^/]+)/([^?]*)%??(.*)$")
+  local kind = host and KNOWN_HOSTS[host]
+  if not kind then
+    return nil
+  end
+  local owner, repo, ref = (strip_archive(path) or path):match(FORGES[kind].archive)
+  if not owner then
+    return nil
+  end
+  ref = ref:gsub("^refs/heads/", ""):gsub("^refs/tags/", "")
+  return forge_url(kind, owner, repo, ref, query(params))
 end
 
 function M.to_url(ref)
@@ -75,8 +132,15 @@ function M.to_url(ref)
     end
     return GIT[scheme] .. "://" .. host .. "/" .. path
   end
+  local fetcher, url = ref:match("^(%a+)%+(https?:.*)$")
   if scheme == "https" or scheme == "http" then
-    return ref
+    fetcher, url = strip_archive(body) and "tarball" or "file", ref
+  end
+  if fetcher == "tarball" then
+    return archive_url(url)
+  end
+  if fetcher == "file" then
+    return url
   end
   return nil
 end
@@ -97,7 +161,10 @@ function M.from_attrs(attrs)
   if attrs.type == "git" and attrs.url then
     return M.to_url("git+" .. attrs.url)
   end
-  if (attrs.type == "tarball" or attrs.type == "file") and attrs.url then
+  if attrs.type == "tarball" and attrs.url then
+    return archive_url(attrs.url)
+  end
+  if attrs.type == "file" and attrs.url then
     return attrs.url
   end
   return nil
