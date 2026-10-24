@@ -11,6 +11,11 @@ and answers `textDocument/definition`, `textDocument/references` and
 `textDocument/hover` through a small LSP server running inside Neovim. It works
 next to nixd or nil: Neovim merges the answers.
 
+It also navigates the options declared in the repository: on
+`modules.audio.enable = true;` in a host, go to definition on `audio` opens
+`options.modules.audio = { … }`, on `enable` opens its `mkEnableOption`, and
+references list every host that sets it and every `cfg.enable` that reads it.
+
 ## Requirements
 
 - Neovim 0.11 or later
@@ -64,11 +69,12 @@ flake in `/nix/store/<hash>-source`, so its option declarations point there.
 Locations in a store copy whose `flake.lock` matches the working tree are opened
 in the working tree instead. Set `remap_store_paths = false` to keep them.
 
-### Option navigation with nixd
+### Option types and completion with nixd (optional)
 
-nixd jumps to option declarations (`modules.audio.enable = …`) once it knows the
-options of your hosts. Options only exist in the hosts that import their module,
-so merge every host:
+flake-nav navigates options without nixd. To also get option types, defaults
+and completion from evaluation, including nixpkgs options, give nixd the
+options of your hosts. Options only exist in the hosts that import their
+module, so merge every host:
 
 ```lua
 vim.lsp.config("nixd", {
@@ -96,9 +102,11 @@ client before `before_init` runs.
 
 ## Usage
 
-Use your usual LSP mappings (`gd`, `gr`, `K`) on a module name.
+Use your usual LSP mappings (`gd`, `gr`, `K`) on a module name or on an option
+path segment.
 
-- `:FlakeNav info` shows the root, the scope, counts and files that could not be indexed.
+- `:FlakeNav info` shows the root, the scope, module and option counts and files that could not
+  be indexed.
 - `:FlakeNav reindex` rebuilds the index.
 
 ## Recognised forms
@@ -109,6 +117,35 @@ and any nesting of those paths inside `flake = { … }`.
 Usages: `<root>.<class>.<name>` and the identifiers listed in
 `with <root>.<class>; [ … ]`, where `<root>` is `config.flake.modules`,
 `self.modules`, `inputs.self.modules`, or a `let` alias of one of them.
+
+### Options
+
+An option belongs to the class of the module that declares it:
+
+| Module | Class |
+|---|---|
+| top level of a file (flake-parts module) | `flake` |
+| `flake.modules.<class>.<name> = …` | `<class>` |
+| `configurations.<class>.<name>.module = …` | `<class>` |
+| another `{ … }: { … }` value in a flake-parts module | unknown, matches any class |
+
+Declarations: `options.<path> = …` and `options = { … }`, nested attrsets
+included. Every path segment is a declaration of its prefix, so intermediate
+nodes have one. A call to `mkOption`, `mkEnableOption` or `mkPackageOption`
+(bare or `lib.`) is a leaf.
+
+Usages:
+
+- assignments in a module body, shorthand or under `config`, through `mkIf`,
+  `mkMerge`, `mkDefault`, `mkForce`, `mkOverride`, `mkBefore`, `mkAfter` and
+  `mkOrder`;
+- reads of `config.<path>` and of `let` aliases such as
+  `cfg = config.modules.audio;` then `cfg.enable`. `config` follows lexical
+  scope: an inner module without a `config` argument reads the outer
+  flake-parts `config`.
+
+Paths that the repository does not declare (`networking.hostName`) get no
+answer, so nixd answers them.
 
 ## Scope
 
@@ -127,6 +164,9 @@ Without import-tree, or with a form it cannot read statically (`.filter`,
 - den aspects are not supported.
 - Imports made from indexed files are not followed: a `flake.modules` definition in a `_` file or
   outside the import-tree paths, imported by hand from a module, is not indexed.
+- Options of submodules (`types.submodule { options = …; }`) are not indexed.
+- `home-manager.users.<user>.<path>`, `sharedModules`, inline modules in
+  `imports = [ { … } ]` and `inherit (cfg) …` are not followed.
 
 ## License
 
