@@ -35,6 +35,16 @@ references are supported, including `/<branch>`, `?ref=`,
 Tarballs from GitHub, GitLab or SourceHut open the repository at the archived ref,
 and `file` URLs open as they are.
 
+**Diagnostics** in open files that flake-nav indexes flag:
+
+- a module or flake input that does not exist, as a warning, or as information
+  when the module's class is partly computed or a file has syntax errors;
+- a module that nothing uses, as a hint faded as unnecessary code. Modules
+  you publish for other flakes show up too: turn it off with
+  `diagnostics = { unused = false }`. A class read as a whole
+  (`attrValues fm.nixos`, `fm.nixos.${name}`) gets no hint, and no hint is
+  shown while a file has syntax errors.
+
 ## Requirements
 
 - Neovim 0.11 or later
@@ -100,6 +110,7 @@ require("flake-nav").setup({
   filter_with_definitions = true,
   remap_store_paths = true,
   input_links = true,
+  diagnostics = { unknown = true, unused = true },
 })
 ```
 
@@ -112,6 +123,10 @@ require("flake-nav").setup({
 | `filter_with_definitions` | hide results from other language servers that duplicate flake-nav's, such as nixd jumping to the `with` keyword |
 | `remap_store_paths` | open results that other language servers give in `/nix/store` copies of your flake in your working tree instead |
 | `input_links` | make flake inputs in `flake.nix` open with `gx` |
+| `diagnostics.unknown` | warn on modules and flake inputs that do not exist |
+| `diagnostics.unused` | hint at modules that nothing uses |
+
+`diagnostics = false` turns both off.
 
 ### Option types and completion with nixd (optional)
 
@@ -199,10 +214,17 @@ not load. Otherwise the whole repository is indexed.
 
 ## Limitations
 
-- Names computed by code (`lib.mapAttrs`, interpolation) are not found.
+- Other names computed by code (interpolation, `lib.genAttrs`, …) are not found.
+  Unknown modules of such a class, or of every class when the module set itself
+  is computed, are reported as information rather than warnings.
+- Modules defined by flake modules of your inputs
+  (`imports = [ inputs.x.flakeModules.default ]`) are read from the input's
+  source in `/nix/store`, in the background. Until the input is fetched, and
+  while it is read, their uses are reported as unknown.
 - Aliases passed between files are not followed.
 - den aspects are not supported.
-- Files imported by hand from a module, outside the import-tree paths, are not indexed.
+- Files imported by hand from a module, outside the import-tree paths, are not
+  indexed, so the modules they define are reported as unknown.
 - Options of submodules (`types.submodule { options = …; }`) are not indexed.
 - `inherit (cfg) …` is not followed yet.
 - The inputs of your inputs are not followed beyond `follows`.
