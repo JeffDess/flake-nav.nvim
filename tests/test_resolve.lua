@@ -39,7 +39,24 @@ T["nil on the alias, the end column and elsewhere"] = function()
   eq(resolve.at(parsed, 7, 8), nil)
   eq(resolve.at(parsed, 6, 35), nil)
   eq(resolve.at(parsed, 0, 2), nil)
-  eq(resolve.at(parsed, 5, 2), nil)
+end
+
+T["on option usages, after modules"] = function()
+  eq(resolve.at(parsed, 5, 2), { kind = "option", class = "flake", path = "flake" })
+  eq(resolve.at(parsed, 2, 14), { kind = "option", class = "flake", path = "flake" })
+  eq(resolve.at(parsed, 7, 4), { kind = "option", class = "nixos", path = "x" })
+  eq(resolve.at(parsed, 5, 22), { kind = "module", class = "nixos", name = "locale" })
+end
+
+T["on option declarations"] = function()
+  local options = parse.parse(table.concat({
+    "{",
+    "  flake.modules.nixos.audio = { lib, ... }: {",
+    "    options.modules.audio.enable = lib.mkOption { };",
+    "  };",
+    "}",
+  }, "\n"))
+  eq(resolve.at(options, 2, 20), { kind = "option", class = "nixos", path = "modules.audio" })
 end
 
 return T

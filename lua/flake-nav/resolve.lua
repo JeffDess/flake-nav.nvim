@@ -27,6 +27,14 @@ function M.at(parsed, row, col)
       return { kind = def.kind, class = def.class, name = def.name }
     end
   end
+  local options = parsed.options or {}
+  for _, list in ipairs({ options.uses or {}, options.decls or {} }) do
+    for _, item in ipairs(list) do
+      if contains(item.range, row, col) then
+        return { kind = item.kind, class = item.class, path = item.path }
+      end
+    end
+  end
   return nil
 end
 
