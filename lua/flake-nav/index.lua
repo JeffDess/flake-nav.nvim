@@ -203,6 +203,42 @@ function Index:references(class, name, include_declaration)
   return out
 end
 
+local function same_class(a, b)
+  return a == nil or b == nil or a == b
+end
+
+function Index:option_items(field, class, path)
+  local out = {}
+  for file, entry in pairs(self.files) do
+    if self.scope[file] then
+      for _, item in ipairs(entry.parsed.options[field]) do
+        if item.path == path and same_class(class, item.class) then
+          out[#out + 1] = { path = file, item = item }
+        end
+      end
+    end
+  end
+  table.sort(out, by_location)
+  return out
+end
+
+function Index:option_definitions(class, path)
+  return self:option_items("decls", class, path)
+end
+
+function Index:option_references(class, path, include_declaration)
+  local defs = self:option_definitions(class, path)
+  if #defs == 0 then
+    return {}
+  end
+  local out = self:option_items("uses", class, path)
+  if include_declaration then
+    vim.list_extend(out, defs)
+    table.sort(out, by_location)
+  end
+  return out
+end
+
 function Index:stats()
   local stats = {
     root = self.root,
