@@ -21,7 +21,7 @@ M.contains = contains
 function M.at(parsed, row, col)
   for _, use in ipairs(parsed.uses) do
     if contains(use.range, row, col) or contains(use.class_range, row, col) then
-      return { kind = use.kind, class = use.class, name = use.name, with_range = use.with_range }
+      return { kind = use.kind, class = use.class, name = use.name, binder_range = use.binder_range }
     end
   end
   for _, def in ipairs(parsed.defs) do
