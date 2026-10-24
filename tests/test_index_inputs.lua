@@ -71,6 +71,12 @@ T["locked revisions follow follows paths"] = function()
   eq(idx:locked("local"), nil)
 end
 
+T["stats count inputs and their usages"] = function()
+  local stats = index():stats()
+  eq(stats.inputs, 5)
+  eq(stats.input_uses > 0, true)
+end
+
 T["a missing or broken lock gives nothing"] = function()
   local root = vim.fn.tempname()
   vim.fn.mkdir(root, "p")

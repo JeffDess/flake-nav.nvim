@@ -341,6 +341,8 @@ function Index:stats()
     uses = 0,
     option_declarations = 0,
     option_uses = 0,
+    inputs = 0,
+    input_uses = 0,
     skipped = {},
     with_errors = {},
     scope = { origin = self.origin, paths = vim.deepcopy(self.included) },
@@ -352,11 +354,18 @@ function Index:stats()
       stats.uses = stats.uses + #entry.parsed.uses
       stats.option_declarations = stats.option_declarations + #entry.parsed.options.decls
       stats.option_uses = stats.option_uses + #entry.parsed.options.uses
+      for _, use in ipairs(entry.parsed.inputs.uses) do
+        if path == self:flake_path() or not use.flake_only then
+          stats.input_uses = stats.input_uses + 1
+        end
+      end
       if entry.parsed.errors > 0 then
         stats.with_errors[#stats.with_errors + 1] = path
       end
     end
   end
+  local flake = self:parsed(self:flake_path())
+  stats.inputs = flake and #flake.inputs.decls or 0
   for path in pairs(self.skipped) do
     stats.skipped[#stats.skipped + 1] = path
   end
