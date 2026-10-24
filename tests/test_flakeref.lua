@@ -1,0 +1,69 @@
+local T = MiniTest.new_set()
+local eq = MiniTest.expect.equality
+local flakeref = require("flake-nav.flakeref")
+
+local CASES = {
+  { "github:cachix/git-hooks.nix", "https://github.com/cachix/git-hooks.nix" },
+  { "github:nixos/nixpkgs/nixos-unstable", "https://github.com/nixos/nixpkgs/tree/nixos-unstable" },
+  {
+    "github:nixos/nixpkgs?ref=nixos-unstable",
+    "https://github.com/nixos/nixpkgs/tree/nixos-unstable",
+  },
+  { "github:nixos/nixpkgs?rev=abc123", "https://github.com/nixos/nixpkgs/commit/abc123" },
+  { "github:nixos/nixpkgs/main?rev=abc123", "https://github.com/nixos/nixpkgs/commit/abc123" },
+  { "github:numtide/treefmt?dir=nix", "https://github.com/numtide/treefmt/tree/HEAD/nix" },
+  { "github:numtide/treefmt/main?dir=nix", "https://github.com/numtide/treefmt/tree/main/nix" },
+  { "github:owner/repo?host=git.example.org", "https://git.example.org/owner/repo" },
+  { "gitlab:veloren/veloren", "https://gitlab.com/veloren/veloren" },
+  { "gitlab:veloren/veloren/master", "https://gitlab.com/veloren/veloren/-/tree/master" },
+  { "gitlab:veloren/veloren?rev=abc123", "https://gitlab.com/veloren/veloren/-/commit/abc123" },
+  { "gitlab:veloren/veloren?dir=nix", "https://gitlab.com/veloren/veloren/-/tree/HEAD/nix" },
+  { "gitlab:group%2Fsub/repo", "https://gitlab.com/group/sub/repo" },
+  { "gitlab:owner/repo?host=gitlab.example.org", "https://gitlab.example.org/owner/repo" },
+  { "sourcehut:~user/repo", "https://git.sr.ht/~user/repo" },
+  { "sourcehut:~user/repo/main", "https://git.sr.ht/~user/repo/tree/main" },
+  { "git+https://codeberg.org/owner/repo.git?ref=main", "https://codeberg.org/owner/repo" },
+  { "git+http://git.example.org/repo", "http://git.example.org/repo" },
+  { "https://example.org/archive.tar.gz", "https://example.org/archive.tar.gz" },
+  { "http://example.org/archive.tar.gz", "http://example.org/archive.tar.gz" },
+  { "path:./vendor/flake", nil },
+  { "git+file:///srv/repo", nil },
+  { "git+ssh://git@example.org/repo.git", nil },
+  { "nixpkgs", nil },
+  { "flake:nixpkgs", nil },
+  { "github:incomplete", nil },
+}
+
+for _, case in ipairs(CASES) do
+  T["to_url " .. case[1]] = function()
+    eq(flakeref.to_url(case[1]), case[2])
+  end
+end
+
+T["from_attrs builds the same URL as the string form"] = function()
+  eq(
+    flakeref.from_attrs({
+      type = "github",
+      owner = "nixos",
+      repo = "nixpkgs",
+      ref = "nixos-unstable",
+    }),
+    "https://github.com/nixos/nixpkgs/tree/nixos-unstable"
+  )
+  eq(
+    flakeref.from_attrs({ type = "gitlab", owner = "veloren", repo = "veloren", rev = "abc123" }),
+    "https://gitlab.com/veloren/veloren/-/commit/abc123"
+  )
+  eq(
+    flakeref.from_attrs({ type = "git", url = "https://codeberg.org/owner/repo.git" }),
+    "https://codeberg.org/owner/repo"
+  )
+  eq(
+    flakeref.from_attrs({ type = "tarball", url = "https://example.org/a.tar.gz" }),
+    "https://example.org/a.tar.gz"
+  )
+  eq(flakeref.from_attrs({ type = "path", path = "/srv/flake" }), nil)
+  eq(flakeref.from_attrs({ type = "github", owner = "nixos" }), nil)
+end
+
+return T
