@@ -66,14 +66,20 @@ then call `require("flake-nav").setup()`.
 
 ## Usage
 
-Use your usual LSP mappings on a module name or on an option path:
+Use your LSP mappings on a module name or on an option path. Neovim's defaults:
 
-| Mapping | Action |
+| Action | Default mapping |
 | --- | --- |
-| `gd` | go to definition |
-| `gr` | go to references |
-| `K` | show definition |
-| `gx` | open a flake input in the browser (in `flake.nix`) |
+| go to definition | `CTRL-]` |
+| go to references | `grr` |
+| show definition | `K` |
+| open a flake input in the browser (in `flake.nix`) | `gx` |
+
+To open flake inputs with another mapping:
+
+```lua
+vim.keymap.set("n", "<leader>go", require("flake-nav").open_input)
+```
 
 Commands:
 
