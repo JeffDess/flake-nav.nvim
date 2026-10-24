@@ -79,10 +79,20 @@ local function unwrap(node)
   return nil
 end
 
-local function collect_defs(set_owner, path, src, out)
+local function collect_defs(set_owner, path, src, out, under_config)
   for _, b in ipairs(bindings(set_owner)) do
     if b:type() == "binding" then
       local segs = attrpath(first(b, "attrpath"), src)
+      local value = first(b, "expression")
+      if segs and #path == 0 and not under_config and segs[1] and segs[1].name == "config" then
+        table.remove(segs, 1)
+        if #segs == 0 then
+          if value and ATTRSETS[value:type()] then
+            collect_defs(value, {}, src, out, true)
+          end
+          segs = nil
+        end
+      end
       if segs then
         local names = { unpack(path) }
         local descend = true
@@ -107,9 +117,8 @@ local function collect_defs(set_owner, path, src, out)
             break
           end
         end
-        local value = first(b, "expression")
         if descend and value and ATTRSETS[value:type()] then
-          collect_defs(value, names, src, out)
+          collect_defs(value, names, src, out, true)
         end
       end
     end
