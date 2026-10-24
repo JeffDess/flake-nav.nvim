@@ -1,4 +1,5 @@
 local parse = require("flake-nav.parse")
+local store = require("flake-nav.store")
 
 local Index = {}
 Index.__index = Index
@@ -57,6 +58,9 @@ function Index.new(root, opts)
     scope = {},
     origin = "none",
     included = { "." },
+    store_dir = "/nix/store",
+    external = {},
+    external_cache = {},
   }, Index)
 end
 
@@ -73,6 +77,7 @@ function Index:entries()
   for _, rel in ipairs(self.included) do
     out[#out + 1] = rel == "." and self.root or vim.fs.joinpath(self.root, rel)
   end
+  self.entry_paths = out
   return out
 end
 
@@ -145,8 +150,98 @@ function Index:refresh()
       self.skipped[path] = nil
     end
   end
+  for path in pairs(self.docs) do
+    if not seen[path] and self:in_tree(path) then
+      seen[path] = true
+    end
+  end
   self.scope = seen
+  self:link()
+end
+
+function Index:in_tree(path)
+  if path:sub(-4) ~= ".nix" then
+    return false
+  end
+  for _, entry in ipairs(self.entry_paths or self:entries()) do
+    local rel = entry == path and "." or vim.fs.relpath(entry, path)
+    if rel then
+      local visible = true
+      for part in rel:gmatch("[^/]+") do
+        visible = visible and not self:hidden(part)
+      end
+      if visible then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+function Index:link()
   self:link_mapped()
+  self:link_external()
+end
+
+local SOURCE_BUDGET_NS = 10e6
+
+function Index:load_source(dir)
+  self.external_cache[dir] = false
+  local files = {}
+  local skip = function(sub)
+    return not self:hidden(vim.fs.basename(sub))
+  end
+  for rel, kind in vim.fs.dir(dir, { depth = math.huge, skip = skip }) do
+    if kind == "file" and rel:sub(-4) == ".nix" and not self:hidden(vim.fs.basename(rel)) then
+      files[#files + 1] = vim.fs.joinpath(dir, rel)
+    end
+  end
+  local defs, done = {}, 0
+  local function step()
+    local deadline = vim.uv.hrtime() + SOURCE_BUDGET_NS
+    while done < #files and vim.uv.hrtime() < deadline do
+      done = done + 1
+      local text = read(files[done])
+      if text and text:find("modules", 1, true) and text:find("flake", 1, true) then
+        for _, def in ipairs(parse.parse(text).defs) do
+          defs[#defs + 1] = { path = files[done], item = def }
+        end
+      end
+    end
+    if done < #files then
+      vim.schedule(step)
+      return
+    end
+    self.external_cache[dir] = defs
+    self:link_external()
+    if self.on_source then
+      self.on_source()
+    end
+  end
+  vim.schedule(step)
+end
+
+function Index:link_external()
+  local names = {}
+  for path, entry in pairs(self.files) do
+    if self.scope[path] then
+      for name in pairs(entry.parsed.external) do
+        names[name] = true
+      end
+    end
+  end
+  local out = {}
+  for name in pairs(names) do
+    local locked = self:locked(name)
+    local dir = locked and store.source(locked.narHash, self.store_dir)
+    if dir and self.external_cache[dir] == nil and vim.uv.fs_stat(dir) then
+      self:load_source(dir)
+    end
+    if dir and self.external_cache[dir] then
+      vim.list_extend(out, self.external_cache[dir])
+    end
+  end
+  self.external = out
 end
 
 function Index:link_mapped()
@@ -188,19 +283,19 @@ function Index:reset()
   for path, text in pairs(self.docs) do
     self.files[path] = { parsed = self:parse_file(path, text) }
   end
-  self:link_mapped()
+  self:link()
 end
 
 function Index:set_document(path, text)
   self.docs[path] = text
   self.files[path] = { parsed = self:parse_file(path, text) }
-  self:link_mapped()
+  self:link()
 end
 
 function Index:clear_document(path)
   self.docs[path] = nil
   self.files[path] = nil
-  self:link_mapped()
+  self:link()
 end
 
 function Index:parsed(path)
@@ -222,6 +317,11 @@ function Index:definitions(class, name)
           out[#out + 1] = { path = path, item = def }
         end
       end
+    end
+  end
+  for _, external in ipairs(self.external) do
+    if external.item.class == class and external.item.name == name then
+      out[#out + 1] = external
     end
   end
   table.sort(out, by_location)

@@ -58,9 +58,27 @@ local function known_inputs(index)
   return out
 end
 
+local function definitions(index)
+  local out = keys(index, "defs")
+  for _, external in ipairs(index.external) do
+    out[key(external.item.class, external.item.name)] = true
+  end
+  return out
+end
+
+local function broken(index)
+  for path, entry in pairs(index.files) do
+    if index.scope[path] and entry.parsed.errors > 0 then
+      return true
+    end
+  end
+  return false
+end
+
 function M.context(index)
   return {
-    defs = keys(index, "defs"),
+    broken = broken(index),
+    defs = definitions(index),
     uses = keys(index, "uses"),
     computed = flags(index, "computed"),
     consumed = flags(index, "consumed"),
@@ -89,7 +107,10 @@ function M.compute(index, path, cfg, context)
     local defs, open = context.defs, context.computed
     for _, use in ipairs(parsed.uses) do
       local name = key(use.class, use.name)
-      if not defs[name] and (open.all or open.classes[use.class]) then
+      if not defs[name] and context.broken then
+        local message = ("Unknown module %s (a file has syntax errors)"):format(name)
+        add(use.range, SEVERITY.Information, message)
+      elseif not defs[name] and (open.all or open.classes[use.class]) then
         local message = ("Unknown module %s (its class is partly computed)"):format(name)
         add(use.range, SEVERITY.Information, message)
       elseif not defs[name] then
@@ -105,7 +126,7 @@ function M.compute(index, path, cfg, context)
       end
     end
   end
-  if cfg.unused then
+  if cfg.unused and not context.broken then
     local uses, read = context.uses, context.consumed
     for _, def in ipairs(parsed.defs) do
       local name = key(def.class, def.name)
