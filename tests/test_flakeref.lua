@@ -28,7 +28,17 @@ local CASES = {
   { "http://example.org/archive.tar.gz", "http://example.org/archive.tar.gz" },
   { "path:./vendor/flake", nil },
   { "git+file:///srv/repo", nil },
-  { "git+ssh://git@example.org/repo.git", nil },
+  { "git+ssh://git@example.org/team/repo.git", "https://example.org/team/repo" },
+  { "git+ssh://git@git.example.org:2222/team/repo", "https://git.example.org/team/repo" },
+  {
+    "git+ssh://git@github.com/nixos/nixpkgs.git?ref=nixos-unstable",
+    "https://github.com/nixos/nixpkgs/tree/nixos-unstable",
+  },
+  {
+    "git+ssh://git@gitlab.com/veloren/veloren?rev=abc123",
+    "https://gitlab.com/veloren/veloren/-/commit/abc123",
+  },
+  { "git+https://github.com/nixos/nixpkgs?ref=main", "https://github.com/nixos/nixpkgs/tree/main" },
   { "nixpkgs", nil },
   { "flake:nixpkgs", nil },
   { "github:incomplete", nil },
