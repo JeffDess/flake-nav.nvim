@@ -26,6 +26,12 @@ It works alongside nixd or nil.
 Options are those declared in your repository. Unsaved changes are taken into
 account, and paths ignored by import-tree are ignored too.
 
+In `flake.nix`, **`gx` on an input opens its web page**:
+`url = "github:cachix/git-hooks.nix";` opens
+`https://github.com/cachix/git-hooks.nix`. GitHub, GitLab, SourceHut, `git+https`
+and plain `https` references are supported, including `/<branch>`, `?ref=`,
+`?rev=` and `?dir=`.
+
 ## Requirements
 
 - Neovim 0.11 or later
@@ -65,6 +71,7 @@ Use your usual LSP mappings on a module name or on an option path:
 | `gd` | go to definition |
 | `gr` | go to references |
 | `K` | show definition |
+| `gx` | open a flake input in the browser (in `flake.nix`) |
 
 Commands:
 
@@ -83,6 +90,7 @@ require("flake-nav").setup({
   hover = { max_lines = 30 },
   filter_with_definitions = true,
   remap_store_paths = true,
+  input_links = true,
 })
 ```
 
@@ -94,6 +102,7 @@ require("flake-nav").setup({
 | `hover.max_lines` | longest source excerpt shown on hover |
 | `filter_with_definitions` | hide results from other language servers that duplicate flake-nav's, such as nixd jumping to the `with` keyword |
 | `remap_store_paths` | open results that other language servers give in `/nix/store` copies of your flake in your working tree instead |
+| `input_links` | make flake inputs in `flake.nix` open with `gx` |
 
 ### Option types and completion with nixd (optional)
 
