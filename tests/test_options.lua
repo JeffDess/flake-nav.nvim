@@ -136,4 +136,115 @@ T["declarations"]["values that are not attrsets or option calls stop the descent
   })
 end
 
+local function uses(text)
+  return parse.parse(text).options.uses
+end
+
+local function module(...)
+  local body = { "{", "  flake.modules.nixos.audio = { lib, ... }: {" }
+  vim.list_extend(body, { ... })
+  vim.list_extend(body, { "  };", "}" })
+  return table.concat(body, "\n")
+end
+
+local function nixos(items)
+  local out = {}
+  for _, key in ipairs(keys(items)) do
+    if key:sub(1, 6) == "nixos:" then
+      out[#out + 1] = key
+    end
+  end
+  return out
+end
+
+T["assignments"] = MiniTest.new_set()
+
+T["assignments"]["shorthand paths record every prefix"] = function()
+  eq(nixos(uses(module("    modules.audio.enable = true;"))), {
+    "nixos:modules.audio.enable@2:18",
+    "nixos:modules.audio@2:12",
+    "nixos:modules@2:4",
+  })
+end
+
+T["assignments"]["config is stripped"] = function()
+  eq(
+    nixos(uses(module("    config.a.b = 1;", "    config = { c = { d = 2; }; };"))),
+    { "nixos:a.b@2:13", "nixos:a@2:11", "nixos:c.d@3:21", "nixos:c@3:15" }
+  )
+end
+
+T["assignments"]["mk wrappers are unwrapped"] = function()
+  eq(
+    nixos(
+      uses(
+        module(
+          "    config = lib.mkMerge [",
+          "      (lib.mkIf true { a = 1; })",
+          "      { b = mkDefault { c = 2; }; }",
+          "      (lib.mkOverride 50 { d = 3; })",
+          "      (mkForce { e = 4; })",
+          "    ];"
+        )
+      )
+    ),
+    {
+      "nixos:a@3:23",
+      "nixos:b.c@4:24",
+      "nixos:b@4:8",
+      "nixos:d@5:27",
+      "nixos:e@6:17",
+    }
+  )
+end
+
+T["assignments"]["interpolated keys, imports and options are not usages"] = function()
+  eq(
+    nixos(
+      uses(
+        module(
+          "    ${name}.x = 1;",
+          "    imports = [ { y = 1; } ];",
+          "    options.z = lib.mkOption { };"
+        )
+      )
+    ),
+    {}
+  )
+end
+
+T["assignments"]["configurations module sets the class"] = function()
+  local found = keys(
+    uses(
+      lines(
+        "{ config, ... }:",
+        "{",
+        "  configurations.nixos.desktop.module = { lib, ... }: {",
+        "    modules.audio.enable = true;",
+        "  };",
+        "}"
+      )
+    )
+  )
+  eq(found, {
+    "flake:configurations.nixos.desktop.module@2:31",
+    "flake:configurations.nixos.desktop@2:23",
+    "flake:configurations.nixos@2:17",
+    "flake:configurations@2:2",
+    "nixos:modules.audio.enable@3:18",
+    "nixos:modules.audio@3:12",
+    "nixos:modules@3:4",
+  })
+end
+
+T["assignments"]["other module functions have an unknown class"] = function()
+  local found = keys(uses("{ custom = { config, ... }: { modules.audio.enable = true; }; }"))
+  eq(found, {
+    "?:modules.audio.enable@0:44",
+    "?:modules.audio@0:38",
+    "?:modules@0:30",
+    "flake:custom@0:2",
+  })
+end
+
 return T

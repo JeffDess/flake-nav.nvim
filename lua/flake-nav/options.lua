@@ -8,6 +8,15 @@ local M = {}
 
 local LEAVES = { mkOption = true, mkEnableOption = true, mkPackageOption = true }
 local SKIP = { imports = true, _file = true, key = true, disabledModules = true }
+local WRAPPERS = {
+  mkIf = true,
+  mkDefault = true,
+  mkForce = true,
+  mkOverride = true,
+  mkBefore = true,
+  mkAfter = true,
+  mkOrder = true,
+}
 
 local function strip(node)
   while node and node:type() == "parenthesized_expression" do
@@ -107,11 +116,29 @@ end
 local module, assign
 
 local function assign_value(value, class, path, ctx)
+  local name, args = call_of(value, ctx.src)
+  if name == "mkMerge" then
+    local list = strip(args[#args])
+    for _, element in
+      ipairs(list and list:type() == "list_expression" and list:field("element") or {})
+    do
+      assign_value(element, class, path, ctx)
+    end
+    return
+  end
+  if name and WRAPPERS[name] then
+    return assign_value(args[#args], class, path, ctx)
+  end
   value = strip(value)
-  if value and ATTRSETS[value:type()] then
+  if not value then
+    return
+  end
+  if ATTRSETS[value:type()] then
     each_binding(value, ctx, function(_, segs, inner)
       assign(segs, inner, class, path, ctx)
     end)
+  elseif class == "flake" and value:type() == "function_expression" then
+    module(value, nil, ctx)
   end
 end
 
@@ -119,6 +146,12 @@ assign = function(segs, value, class, path, ctx)
   local names = path
   for i, seg in ipairs(segs) do
     names = extend(names, seg.name)
+    ctx.uses[#ctx.uses + 1] = {
+      kind = "option",
+      class = class,
+      path = table.concat(names, "."),
+      range = { seg.node:range() },
+    }
     local target = class == "flake" and context(names)
     if target then
       if i == #segs then
