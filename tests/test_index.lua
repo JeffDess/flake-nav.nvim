@@ -177,4 +177,35 @@ T["an open flake.nix drives the scope"] = function()
   vim.fn.delete(root, "rf")
 end
 
+T["modules mapped from a flake option are defined where the option is set"] = function()
+  local root = vim.fn.tempname()
+  write(root .. "/flake.nix", "{ outputs = _: { }; }")
+  write(
+    root .. "/users.nix",
+    "{ lib, config, ... }: { config.flake.modules.nixos = lib.mapAttrs mk config.users; }"
+  )
+  write(root .. "/alice.nix", "{ users.alice = { groups = [ ]; }; }")
+  write(root .. "/bob.nix", "{\n  users = { bob.groups = [ ]; };\n}")
+  write(root .. "/reader.nix", "{ config, ... }: { x = config.users.carol; }")
+  local index = Index.new(root, { ignore = IGNORE })
+  index:refresh()
+  local function at(class, name)
+    return vim.tbl_map(function(entry)
+      return ("%s:%d:%d"):format(
+        vim.fs.relpath(root, entry.path),
+        entry.item.range[1],
+        entry.item.range[2]
+      )
+    end, index:definitions(class, name))
+  end
+  eq(at("nixos", "alice"), { "alice.nix:0:8" })
+  eq(at("nixos", "bob"), { "bob.nix:1:12" })
+  eq(at("nixos", "carol"), {})
+  eq(index:definitions("nixos", "alice")[1].item.scope_range[1], 0)
+  index:set_document(root .. "/alice.nix", "{ users.dave = { }; }")
+  eq(at("nixos", "alice"), {})
+  eq(at("nixos", "dave"), { "alice.nix:0:8" })
+  vim.fn.delete(root, "rf")
+end
+
 return T
