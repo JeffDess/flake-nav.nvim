@@ -358,7 +358,7 @@ local function lookup(scopes, name)
   return nil
 end
 
-local function chain(node, src)
+local function chain(node, src, partial)
   local kind = node:type()
   if kind == "variable_expression" then
     return text_of(first(node, "name"), src), {}
@@ -368,7 +368,7 @@ local function chain(node, src)
     if not base or base:type() ~= "variable_expression" then
       return nil
     end
-    local segs = attrpath(first(node, "attrpath"), src)
+    local segs = attrpath(first(node, "attrpath"), src, partial)
     if not segs then
       return nil
     end
@@ -377,11 +377,11 @@ local function chain(node, src)
   return nil
 end
 
-local function after_root(node, scopes, src)
+local function after_root(node, scopes, src, partial)
   if not node then
     return nil
   end
-  local base, segs = chain(node, src)
+  local base, segs = chain(node, src, partial)
   if not base then
     return nil
   end
@@ -390,7 +390,7 @@ local function after_root(node, scopes, src)
   end
   local names = { base }
   for _, seg in ipairs(segs) do
-    names[#names + 1] = seg.name
+    names[#names + 1] = seg.name or false
   end
   for i = 2, #names do
     if names[i] == "modules" then
@@ -490,7 +490,26 @@ local function list_identifiers(node, src, acc)
   return acc
 end
 
-local function walk(node, scopes, src, uses)
+local function environment_of_with(node)
+  local parent = node:parent()
+  return parent and parent:type() == "with_expression" and first(parent, "environment"):equal(node)
+end
+
+local function consumption(node, scopes, src, consumed)
+  local rest = after_root(node, scopes, src, true)
+  if not rest or #rest == 0 then
+    return
+  end
+  if not rest[1].name then
+    consumed.all = true
+  elseif #rest == 1 and not environment_of_with(node) then
+    consumed.classes[rest[1].name] = true
+  elseif rest[2] and not rest[2].name then
+    consumed.classes[rest[1].name] = true
+  end
+end
+
+local function walk(node, scopes, src, uses, consumed)
   local kind = node:type()
   if kind == "ERROR" then
     return
@@ -507,6 +526,7 @@ local function walk(node, scopes, src, uses)
   end
 
   if kind == "select_expression" then
+    consumption(node, scopes, src, consumed)
     local rest = after_root(node, scopes, src)
     if rest and #rest == 2 then
       uses[#uses + 1] = {
@@ -538,7 +558,7 @@ local function walk(node, scopes, src, uses)
 
   for child in node:iter_children() do
     if child:named() then
-      walk(child, scopes, src, uses)
+      walk(child, scopes, src, uses, consumed)
     end
   end
   if pushed then
@@ -712,6 +732,7 @@ function M.parse(text)
     mapped = {},
     external = {},
     uses = {},
+    consumed = { all = false, classes = {} },
     errors = 0,
     options = { decls = {}, uses = {} },
     inputs = { decls = {}, uses = {} },
@@ -722,7 +743,7 @@ function M.parse(text)
   end
   local root = parser:parse()[1]:root()
   module_defs(first(root, "expression"), text, result)
-  walk(root, {}, text, result.uses)
+  walk(root, {}, text, result.uses, result.consumed)
   result.options = require("flake-nav.options").collect(root, text)
   result.inputs = require("flake-nav.inputs").collect(root, text)
   result.errors = count_errors(root)

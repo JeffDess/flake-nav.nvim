@@ -106,6 +106,55 @@ T["unknown modules of a computed class are reported as information"] = function(
   vim.fn.delete(root, "rf")
 end
 
+T["no unused hint for a class read as a whole"] = function()
+  local base = { "{ flake.modules.nixos = { a = { }; b = { }; }; flake.modules.darwin.c = { }; }" }
+  local host = {
+    "{ config, lib, ... }:",
+    "let",
+    "  fm = config.flake.modules;",
+    "in",
+    "{",
+    "  flake.modules.nixos.host.imports = with fm.nixos; [ a ];",
+    "  x = lib.attrValues fm.darwin;",
+    "}",
+  }
+  local idx, root = project({
+    ["flake.nix"] = { "{ outputs = _: { }; }" },
+    ["base.nix"] = base,
+    ["host.nix"] = host,
+  })
+  local path = vim.fs.joinpath(root, "base.nix")
+  local function hinted()
+    return vim.tbl_map(function(d)
+      return d.message
+    end, diagnostics.compute(idx, path, { unused = true }))
+  end
+  eq(hinted(), { "Module nixos.b is never used" })
+  host[7] = "  x = config.flake.modules.nixos.${name};"
+  idx:set_document(vim.fs.joinpath(root, "host.nix"), table.concat(host, "\n"))
+  eq(hinted(), { "Module darwin.c is never used" })
+  vim.fn.delete(root, "rf")
+end
+
+T["unused definitions"] = function()
+  local base = { "{ flake.modules.nixos = { base = { }; old = { }; }; }" }
+  local idx, root = project({
+    ["flake.nix"] = { "{ outputs = _: { }; }" },
+    ["base.nix"] = base,
+    ["host.nix"] = HOST,
+  })
+  local found = diagnostics.compute(idx, vim.fs.joinpath(root, "base.nix"), { unused = true })
+  eq(summary(found), {
+    {
+      range = span(base, 0, "old"),
+      severity = vim.lsp.protocol.DiagnosticSeverity.Hint,
+      message = "Module nixos.old is never used",
+      tags = { vim.lsp.protocol.DiagnosticTag.Unnecessary },
+    },
+  })
+  vim.fn.delete(root, "rf")
+end
+
 T["nothing outside the index scope"] = function()
   local idx, root = project({
     ["flake.nix"] = { "{ outputs = _: { }; }" },
