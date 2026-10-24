@@ -140,12 +140,16 @@ Options are declared with `options.<path> = mkOption { … }` (or
 
 - `flake.modules.<class>.<name> = …`;
 - `configurations.<class>.<name>.module = …`;
-- a flake-parts module (the top level of a file).
+- a flake-parts module (the top level of a file);
+- `home-manager.users.<user> = …` and `home-manager.sharedModules = [ … ]`
+  (home-manager options);
+- an inline module in `imports = [ { … } ]`.
 
 They are found where they are set, directly or under `config`, through `mkIf`,
 `mkMerge`, `mkDefault`, `mkForce` and the like, and where they are read:
 `config.modules.audio.enable`, or `cfg.enable` after
-`cfg = config.modules.audio;`.
+`cfg = config.modules.audio;`. Home-manager options set from a host, such as
+`home-manager.users.alice.modules.editor.theme = "dark";`, are found too.
 
 Options that your repository does not declare, such as nixpkgs options, are
 left to your other language servers.
@@ -163,5 +167,4 @@ not load. Otherwise the whole repository is indexed.
 - den aspects are not supported.
 - Files imported by hand from a module, outside the import-tree paths, are not indexed.
 - Options of submodules (`types.submodule { options = …; }`) are not indexed.
-- `home-manager.users.<user>.<path>`, `sharedModules`, inline modules in
-  `imports = [ { … } ]` and `inherit (cfg) …` are not followed yet.
+- `inherit (cfg) …` is not followed yet.
