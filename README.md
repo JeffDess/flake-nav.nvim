@@ -30,7 +30,7 @@ In `flake.nix`, **`gx` on an input opens its web page**:
 `url = "github:cachix/git-hooks.nix";` opens
 `https://github.com/cachix/git-hooks.nix`. GitHub, GitLab, SourceHut, `git+https`
 and plain `https` references are supported, including `/<branch>`, `?ref=`,
-`?rev=` and `?dir=`.
+`?rev=` and `?dir=`. `git+ssh` references open the HTTPS site of the same host.
 
 ## Requirements
 
