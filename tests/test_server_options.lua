@@ -85,4 +85,12 @@ T["hover shows the declaration"] = function()
   eq(value:find('description = "Sound server.";', 1, true) ~= nil, true)
 end
 
+T["hover lists the sites of a node declared in several files"] = function()
+  local value = request("textDocument/hover", at(HOST, 10, "modules")).result.contents.value
+  eq(value:find("`modules` (nixos option)", 1, true) ~= nil, true)
+  eq(value:find("- `modules/features/audio.nix:8`", 1, true) ~= nil, true)
+  eq(value:find("- `modules/features/video.nix:5`", 1, true) ~= nil, true)
+  eq(value:find("```", 1, true), nil)
+end
+
 return T

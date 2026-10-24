@@ -80,7 +80,7 @@ end
 
 T["stats count option declarations and usages"] = function()
   local stats = index():stats()
-  eq(stats.option_declarations, 9)
+  eq(stats.option_declarations, 12)
   eq(stats.option_uses > 0, true)
 end
 

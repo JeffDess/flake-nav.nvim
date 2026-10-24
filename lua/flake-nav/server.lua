@@ -44,14 +44,25 @@ local function title(item)
   return ("`%s.%s`"):format(item.class, item.name)
 end
 
+local function site(index, entry)
+  local rel = vim.fs.relpath(index.root, entry.path) or entry.path
+  return ("`%s:%d`"):format(rel, entry.item.range[1] + 1)
+end
+
 local function hover_markdown(index, defs, max_lines)
+  if #defs > 1 and defs[1].item.kind == "option" then
+    local lines = { title(defs[1].item), "" }
+    for _, entry in ipairs(defs) do
+      lines[#lines + 1] = "- " .. site(index, entry)
+    end
+    return table.concat(lines, "\n")
+  end
   local blocks = {}
   for _, entry in ipairs(defs) do
-    local rel = vim.fs.relpath(index.root, entry.path) or entry.path
     blocks[#blocks + 1] = table.concat({
       title(entry.item),
       "",
-      ("`%s:%d`"):format(rel, entry.item.range[1] + 1),
+      site(index, entry),
       "",
       "```nix",
       table.concat(excerpt(index, entry, max_lines), "\n"),
