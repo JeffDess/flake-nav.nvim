@@ -27,6 +27,22 @@ function M.at(parsed, row, col)
       return { kind = def.kind, class = def.class, name = def.name }
     end
   end
+  local inputs = parsed.inputs or {}
+  for _, use in ipairs(inputs.uses or {}) do
+    if contains(use.range, row, col) then
+      return { kind = "input", name = use.name, binder_range = use.binder_range }
+    end
+  end
+  for _, decl in ipairs(inputs.decls or {}) do
+    local ranges = vim.list_extend({}, decl.sites)
+    ranges[#ranges + 1] = decl.ref_range
+    ranges[#ranges + 1] = decl.attrs_range
+    for _, range in ipairs(ranges) do
+      if contains(range, row, col) then
+        return { kind = "input", name = decl.name }
+      end
+    end
+  end
   local options = parsed.options or {}
   for _, list in ipairs({ options.uses or {}, options.decls or {} }) do
     for _, item in ipairs(list) do

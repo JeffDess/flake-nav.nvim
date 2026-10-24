@@ -59,4 +59,23 @@ T["on option declarations"] = function()
   eq(resolve.at(options, 2, 20), { kind = "option", class = "nixos", path = "modules.audio" })
 end
 
+local flake = parse.parse(table.concat({
+  "{",
+  '  inputs.hooks.url = "github:cachix/git-hooks.nix";',
+  "  outputs = inputs@{ self, nixpkgs, ... }: {",
+  "    a = inputs.hooks.lib;",
+  "    m = inputs.self.modules.nixos.base;",
+  "    l = nixpkgs.lib;",
+  "  };",
+  "}",
+}, "\n"))
+
+T["on flake inputs, before options"] = function()
+  eq(resolve.at(flake, 1, 10), { kind = "input", name = "hooks" })
+  eq(resolve.at(flake, 1, 26), { kind = "input", name = "hooks" })
+  eq(resolve.at(flake, 3, 16), { kind = "input", name = "hooks" })
+  eq(resolve.at(flake, 4, 34), { kind = "module", class = "nixos", name = "base" })
+  eq(resolve.at(flake, 5, 9), { kind = "input", name = "nixpkgs", binder_range = { 2, 27, 2, 34 } })
+end
+
 return T
