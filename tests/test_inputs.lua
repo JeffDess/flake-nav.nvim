@@ -70,4 +70,104 @@ T["bindings outside inputs are not declarations"] = function()
   eq(parse.parse('{ outputs = _: { inputs.x.url = "github:a/b"; }; }').inputs.decls, {})
 end
 
+local function use_keys(src)
+  local out = {}
+  for _, use in ipairs(parse.parse(src).inputs.uses) do
+    out[#out + 1] = ("%s@%d:%d%s"):format(
+      use.name,
+      use.range[1],
+      use.range[2],
+      use.binder_range and (" binder %d:%d"):format(use.binder_range[1], use.binder_range[2]) or ""
+    )
+  end
+  table.sort(out)
+  return out
+end
+
+local function at(src, row, text, nth, binder)
+  local r = span(src, row, text, nth)
+  return ("%s@%d:%d%s"):format(
+    text,
+    r[1],
+    r[2],
+    binder and (" binder %d:%d"):format(binder[1], binder[2]) or ""
+  )
+end
+
+local function sorted(list)
+  table.sort(list)
+  return list
+end
+
+local FLAKE = lines(
+  "{",
+  '  inputs.nixpkgs.url = "github:nixos/nixpkgs";',
+  '  inputs.hooks.url = "github:cachix/git-hooks.nix";',
+  '  inputs.hooks.inputs.nixpkgs.follows = "nixpkgs";',
+  "  outputs = inputs@{ self, nixpkgs, ... }: {",
+  "    lib = nixpkgs.lib;",
+  "    hooks = inputs.hooks.lib;",
+  "    same = self.inputs.nixpkgs;",
+  "    mod = inputs.self.modules;",
+  "    shadow = let nixpkgs = 1; in nixpkgs;",
+  "  };",
+  "}"
+)
+
+T["usages in flake.nix"] = function()
+  local formal = span(FLAKE, 4, "nixpkgs")
+  eq(
+    use_keys(FLAKE),
+    sorted({
+      at(FLAKE, 3, "nixpkgs", 2),
+      at(FLAKE, 4, "nixpkgs", 1, formal),
+      at(FLAKE, 5, "nixpkgs", 1, formal),
+      at(FLAKE, 6, "hooks", 2),
+      at(FLAKE, 7, "nixpkgs"),
+    })
+  )
+end
+
+T["inherit from another set shadows an outputs formal"] = function()
+  local src = lines(
+    "{",
+    "  outputs = { self, nixpkgs, ... }: {",
+    "    a = let inherit (x) nixpkgs; in nixpkgs;",
+    "    b = rec { inherit (x) nixpkgs; c = nixpkgs; };",
+    "    d = let inherit nixpkgs; in nixpkgs;",
+    "  };",
+    "}"
+  )
+  local formal = span(src, 1, "nixpkgs")
+  eq(
+    use_keys(src),
+    sorted({
+      at(src, 1, "nixpkgs", 1, formal),
+      at(src, 4, "nixpkgs", 2, formal),
+    })
+  )
+end
+
+T["follows and outputs formals are only meaningful in flake.nix"] = function()
+  for _, use in ipairs(parse.parse(FLAKE).inputs.uses) do
+    eq(use.flake_only == true, use.range[1] == 3 or use.binder_range ~= nil)
+  end
+end
+
+T["usages in modules"] = function()
+  local src = lines(
+    "{ inputs, ... }:",
+    "{",
+    "  imports = [ inputs.hooks.flakeModule ];",
+    "  perSystem = { inputs', ... }: { packages.x = inputs'.hooks.packages.default; };",
+    "  unbound = { x = { }; }.x;",
+    "}"
+  )
+  eq(use_keys(src), sorted({ at(src, 2, "hooks"), at(src, 3, "hooks") }))
+end
+
+T["inputs without a binding are not usages"] = function()
+  eq(use_keys("{ x = inputs.hooks; }"), {})
+end
+
 return T

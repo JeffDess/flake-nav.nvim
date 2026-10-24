@@ -514,7 +514,7 @@ function M.parse(text)
   end
   walk(root, {}, text, result.uses)
   result.options = require("flake-nav.options").collect(root, text)
-  result.inputs = { decls = require("flake-nav.inputs").declarations(root, text), uses = {} }
+  result.inputs = require("flake-nav.inputs").collect(root, text)
   result.errors = count_errors(root)
   return result
 end
@@ -525,6 +525,7 @@ M._internal = {
   attrpath = attrpath,
   attr_name = attr_name,
   bindings = bindings,
+  inherited_names = inherited_names,
   unwrap = unwrap,
   ATTRSETS = ATTRSETS,
 }
