@@ -336,4 +336,86 @@ T["reads"]["a rebound config is not a read"] = function()
   eq(read_keys(src, "nixos:modules"), {})
 end
 
+T["home-manager"] = MiniTest.new_set()
+
+local function host(...)
+  local body = { "{", "  flake.modules.nixos.host = { ... }: {" }
+  vim.list_extend(body, { ... })
+  vim.list_extend(body, { "  };", "}" })
+  return table.concat(body, "\n")
+end
+
+T["home-manager"]["user modules are homeManager modules"] = function()
+  local src = host(
+    "    home-manager.users.demo = { config, ... }: {",
+    '      modules.editor.theme = "light";',
+    "      x = config.modules.editor.theme;",
+    "    };"
+  )
+  eq(
+    read_keys(src, "homeManager:modules.editor.theme"),
+    sorted({
+      at(src, 3, "theme", "homeManager", "modules.editor.theme"),
+      at(src, 4, "theme", "homeManager", "modules.editor.theme"),
+    })
+  )
+end
+
+T["home-manager"]["the dotted form assigns in homeManager"] = function()
+  local src = host('    home-manager.users.demo.modules.editor.theme = "light";')
+  eq(
+    read_keys(src, "homeManager:"),
+    sorted({
+      at(src, 2, "modules", "homeManager", "modules"),
+      at(src, 2, "editor", "homeManager", "modules.editor"),
+      at(src, 2, "theme", "homeManager", "modules.editor.theme"),
+    })
+  )
+end
+
+T["home-manager"]["inline shared modules are homeManager modules"] = function()
+  local src = host('    home-manager.sharedModules = [ { modules.editor.theme = "light"; } ];')
+  eq(
+    read_keys(src, "homeManager:modules.editor.theme"),
+    { at(src, 2, "theme", "homeManager", "modules.editor.theme") }
+  )
+end
+
+T["home-manager"]["wrapped user modules are homeManager modules"] = function()
+  local src = host(
+    "    home-manager.users.demo = lib.mkIf cond ({ config, ... }: {",
+    "      x = config.modules.editor.theme;",
+    "    });"
+  )
+  eq(
+    read_keys(src, "homeManager:modules.editor.theme"),
+    { at(src, 3, "theme", "homeManager", "modules.editor.theme") }
+  )
+end
+
+T["home-manager"]["merged user modules are homeManager modules"] = function()
+  local src = host(
+    "    home-manager.users.demo = lib.mkMerge [",
+    '      { modules.editor.theme = "light"; }',
+    '      (lib.mkIf cond { modules.editor.font = "mono"; })',
+    "    ];"
+  )
+  eq(
+    read_keys(src, "homeManager:modules.editor."),
+    sorted({
+      at(src, 3, "theme", "homeManager", "modules.editor.theme"),
+      at(src, 4, "font", "homeManager", "modules.editor.font"),
+    })
+  )
+end
+
+T["home-manager"]["an interpolated user stops"] = function()
+  local src = host('    home-manager.users.${name}.modules.editor.theme = "light";')
+  eq(read_keys(src, "homeManager:"), {})
+end
+
+T["home-manager"]["nothing switches in a flake-parts module"] = function()
+  eq(read_keys('{ home-manager.users.demo.modules.editor.theme = "light"; }', "homeManager:"), {})
+end
+
 return T

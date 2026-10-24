@@ -113,36 +113,53 @@ local function context(names)
   return nil
 end
 
-local module, assign
+local module, assign, root_binding
 
-local function assign_value(value, class, path, ctx)
+local function inline_modules(list, class, ctx)
+  list = strip(list)
+  if list and list:type() == "list_expression" then
+    for _, element in ipairs(list:field("element")) do
+      local value = strip(element)
+      if value and (ATTRSETS[value:type()] or value:type() == "function_expression") then
+        module(value, class, ctx)
+      end
+    end
+  end
+end
+
+local function each_merged(value, ctx, fn)
   local name, args = call_of(value, ctx.src)
   if name == "mkMerge" then
     local list = strip(args[#args])
     for _, element in
       ipairs(list and list:type() == "list_expression" and list:field("element") or {})
     do
-      assign_value(element, class, path, ctx)
+      each_merged(element, ctx, fn)
     end
-    return
-  end
-  if name and WRAPPERS[name] then
-    return assign_value(args[#args], class, path, ctx)
-  end
-  value = strip(value)
-  if not value then
-    return
-  end
-  if ATTRSETS[value:type()] then
-    each_binding(value, ctx, function(_, segs, inner)
-      assign(segs, inner, class, path, ctx)
-    end)
-  elseif class == "flake" and value:type() == "function_expression" then
-    module(value, nil, ctx)
+  elseif name and WRAPPERS[name] then
+    each_merged(args[#args], ctx, fn)
+  else
+    fn(value)
   end
 end
 
-assign = function(segs, value, class, path, ctx)
+local function assign_value(value, class, path, ctx)
+  each_merged(value, ctx, function(inner)
+    inner = strip(inner)
+    if not inner then
+      return
+    end
+    if ATTRSETS[inner:type()] then
+      each_binding(inner, ctx, function(b, segs, nested)
+        assign(segs, nested, class, path, ctx, b)
+      end)
+    elseif class == "flake" and inner:type() == "function_expression" then
+      module(inner, nil, ctx)
+    end
+  end)
+end
+
+assign = function(segs, value, class, path, ctx, binding)
   local names = path
   for i, seg in ipairs(segs) do
     names = extend(names, seg.name)
@@ -159,6 +176,22 @@ assign = function(segs, value, class, path, ctx)
       end
       return
     end
+    if class ~= "flake" and names[1] == "home-manager" then
+      if #names == 3 and names[2] == "users" then
+        if i == #segs then
+          each_merged(value, ctx, function(inner)
+            module(inner, "homeManager", ctx)
+          end)
+        else
+          root_binding(binding, { unpack(segs, i + 1) }, value, "homeManager", ctx)
+        end
+        return
+      end
+      if #names == 2 and names[2] == "sharedModules" and i == #segs then
+        inline_modules(value, "homeManager", ctx)
+        return
+      end
+    end
   end
   assign_value(value, class, names, ctx)
 end
@@ -173,20 +206,24 @@ module = function(node, class, ctx)
     return
   end
   each_binding(body, ctx, function(b, segs, value)
-    local head = segs[1].name
-    local rest = { unpack(segs, 2) }
-    if head == "options" then
-      if #rest == 0 then
-        declare(value, class, {}, ctx)
-      else
-        add_decls(rest, value, class, {}, b, ctx)
-      end
-    elseif head == "config" then
-      assign(rest, value, class, {}, ctx)
-    elseif not SKIP[head] then
-      assign(segs, value, class, {}, ctx)
-    end
+    root_binding(b, segs, value, class, ctx)
   end)
+end
+
+root_binding = function(b, segs, value, class, ctx)
+  local head = segs[1].name
+  local rest = { unpack(segs, 2) }
+  if head == "options" then
+    if #rest == 0 then
+      declare(value, class, {}, ctx)
+    else
+      add_decls(rest, value, class, {}, b, ctx)
+    end
+  elseif head == "config" then
+    assign(rest, value, class, {}, ctx, b)
+  elseif not SKIP[head] then
+    assign(segs, value, class, {}, ctx, b)
+  end
 end
 
 local function lookup(scopes, name)

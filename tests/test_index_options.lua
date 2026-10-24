@@ -78,6 +78,13 @@ T["no references for an undeclared path"] = function()
   eq(index():option_references("nixos", "services.pipewire.enable", true), {})
 end
 
+T["home-manager user settings reference homeManager options"] = function()
+  eq(where(index():option_references("homeManager", "modules.editor.theme", false)), {
+    pos("modules/features/editor.nix", 10, "theme", 2),
+    pos(HOST, 15, "theme"),
+  })
+end
+
 T["stats count option declarations and usages"] = function()
   local stats = index():stats()
   eq(stats.option_declarations, 12)
