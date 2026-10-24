@@ -1,20 +1,30 @@
 # flake-nav.nvim
 
-Go to definition, references and hover for
-[dendritic](https://github.com/mightyiam/dendritic) flake-parts modules in Neovim.
+Go to definition, go to references and show definition for
+[dendritic](https://github.com/mightyiam/dendritic) flake-parts configurations
+in Neovim.
 
-In a dendritic configuration, modules refer to each other by name
-(`fm.nixos.locale`, `with fm.nixos; [ locale ]`). Nix language servers cannot
-follow those names because the link only exists after evaluation. This plugin
-indexes `flake.modules.<class>.<name>` definitions statically with tree-sitter
-and answers `textDocument/definition`, `textDocument/references` and
-`textDocument/hover` through a small LSP server running inside Neovim. It works
-next to nixd or nil: Neovim merges the answers.
+In a dendritic configuration, modules refer to each other by name and hosts set
+options declared elsewhere. Nix language servers cannot follow those links
+without evaluating the flake. flake-nav follows them as you type:
 
-It also navigates the options declared in the repository: on
-`modules.audio.enable = true;` in a host, go to definition on `audio` opens
-`options.modules.audio = { … }`, on `enable` opens its `mkEnableOption`, and
-references list every host that sets it and every `cfg.enable` that reads it.
+```nix
+imports = with fm.nixos; [ audio desktop ];  # on `audio`: its module, every place that imports it
+modules.audio.enable = true;                 # on `enable`: its declaration, every host that sets it
+```
+
+It works alongside nixd or nil.
+
+## Features
+
+| | Modules (`fm.nixos.audio`) | Options (`modules.audio.enable`) |
+| --- | --- | --- |
+| **Go to definition** | the `flake.modules.nixos.audio` definition | the `options.modules.audio…` declaration, from any part of the path |
+| **Go to references** | every place that uses the module | every host that sets the option and every module that reads it |
+| **Show definition** | the module's source | the option's declaration |
+
+Options are those declared in your repository. Unsaved changes are taken into
+account, and paths ignored by import-tree are ignored too.
 
 ## Requirements
 
@@ -46,7 +56,24 @@ programs.neovim.plugins = [ inputs.flake-nav.packages.${system}.default ];
 
 then call `require("flake-nav").setup()`.
 
+## Usage
+
+Use your usual LSP mappings on a module name or on an option path:
+
+| Mapping | Action |
+| --- | --- |
+| `gd` | go to definition |
+| `gr` | go to references |
+| `K` | show definition |
+
+Commands:
+
+- `:FlakeNav info` shows the project root, what is indexed and any file that could not be read.
+- `:FlakeNav reindex` rebuilds the index.
+
 ## Configuration
+
+Defaults:
 
 ```lua
 require("flake-nav").setup({
@@ -59,22 +86,20 @@ require("flake-nav").setup({
 })
 ```
 
-nixd answers a go-to-definition on a name inside `with fm.nixos; [ … ]` with
-the `with` keyword itself. When flake-nav finds the module, that location is
-dropped so the jump goes straight to the definition. Set
-`filter_with_definitions = false` to keep it.
-
-When nixd evaluates options with `builtins.getFlake`, it reads a copy of the
-flake in `/nix/store/<hash>-source`, so its option declarations point there.
-Locations in a store copy whose `flake.lock` matches the working tree are opened
-in the working tree instead. Set `remap_store_paths = false` to keep them.
+| Option | Description |
+| --- | --- |
+| `root_markers` | files that mark the root of a flake |
+| `ignore` | file and directory names to skip |
+| `ignore_underscore` | skip paths with a component starting with `_`, like import-tree |
+| `hover.max_lines` | longest source excerpt shown on hover |
+| `filter_with_definitions` | hide results from other language servers that duplicate flake-nav's, such as nixd jumping to the `with` keyword |
+| `remap_store_paths` | open results that other language servers give in `/nix/store` copies of your flake in your working tree instead |
 
 ### Option types and completion with nixd (optional)
 
-flake-nav navigates options without nixd. To also get option types, defaults
-and completion from evaluation, including nixpkgs options, give nixd the
-options of your hosts. Options only exist in the hosts that import their
-module, so merge every host:
+flake-nav navigates your options on its own. For types, defaults and
+completion of every option, nixpkgs included, configure nixd with the options
+of your hosts:
 
 ```lua
 vim.lsp.config("nixd", {
@@ -97,77 +122,46 @@ vim.lsp.config("nixd", {
 })
 ```
 
-The settings are set in `on_init` because Neovim copies `settings` into the
-client before `before_init` runs.
+## Supported patterns
 
-## Usage
+Modules are defined with `flake.modules.<class>.<name> = …`, in any nesting
+under `flake = { … }`, and used as:
 
-Use your usual LSP mappings (`gd`, `gr`, `K`) on a module name or on an option
-path segment.
+```nix
+fm.nixos.audio                       # fm = config.flake.modules;
+config.flake.modules.nixos.audio
+self.modules.nixos.audio
+inputs.self.modules.nixos.audio
+with fm.nixos; [ audio desktop ]
+```
 
-- `:FlakeNav info` shows the root, the scope, module and option counts and files that could not
-  be indexed.
-- `:FlakeNav reindex` rebuilds the index.
+Options are declared with `options.<path> = mkOption { … }` (or
+`mkEnableOption`, `mkPackageOption`), nested attrsets included, inside:
 
-## Recognised forms
+- `flake.modules.<class>.<name> = …`;
+- `configurations.<class>.<name>.module = …`;
+- a flake-parts module (the top level of a file).
 
-Definitions: `flake.modules.<class>.<name> = …`, `flake.modules.<class> = { <name> = …; }`
-and any nesting of those paths inside `flake = { … }`.
+They are found where they are set, directly or under `config`, through `mkIf`,
+`mkMerge`, `mkDefault`, `mkForce` and the like, and where they are read:
+`config.modules.audio.enable`, or `cfg.enable` after
+`cfg = config.modules.audio;`.
 
-Usages: `<root>.<class>.<name>` and the identifiers listed in
-`with <root>.<class>; [ … ]`, where `<root>` is `config.flake.modules`,
-`self.modules`, `inputs.self.modules`, or a `let` alias of one of them.
+Options that your repository does not declare, such as nixpkgs options, are
+left to your other language servers.
 
-### Options
+## What gets indexed
 
-An option belongs to the class of the module that declares it:
-
-| Module | Class |
-|---|---|
-| top level of a file (flake-parts module) | `flake` |
-| `flake.modules.<class>.<name> = …` | `<class>` |
-| `configurations.<class>.<name>.module = …` | `<class>` |
-| another `{ … }: { … }` value in a flake-parts module | unknown, matches any class |
-
-Declarations: `options.<path> = …` and `options = { … }`, nested attrsets
-included. Every path segment is a declaration of its prefix, so intermediate
-nodes have one. A call to `mkOption`, `mkEnableOption` or `mkPackageOption`
-(bare or `lib.`) is a leaf.
-
-Usages:
-
-- assignments in a module body, shorthand or under `config`, through `mkIf`,
-  `mkMerge`, `mkDefault`, `mkForce`, `mkOverride`, `mkBefore`, `mkAfter` and
-  `mkOrder`;
-- reads of `config.<path>` and of `let` aliases such as
-  `cfg = config.modules.audio;` then `cfg.enable`. `config` follows lexical
-  scope: an inner module without a `config` argument reads the outer
-  flake-parts `config`.
-
-Paths that the repository does not declare (`networking.hostName`) get no
-answer, so nixd answers them.
-
-## Scope
-
-When `flake.nix` calls import-tree (`inputs.import-tree ./modules`,
-`import-tree [ ./a ./b ]`), only `flake.nix`, those paths and the path
-literals of its `imports` lists are indexed, so a definition in a file that
-Nix never loads is never offered. Paths with a component starting with `_`
-are skipped, like import-tree does (`ignore_underscore = false` to keep them).
-Without import-tree, or with a form it cannot read statically (`.filter`,
-`.match`, an alias), the whole repository is indexed.
+When `flake.nix` uses import-tree (`inputs.import-tree ./modules`), only the
+paths it imports are indexed, so flake-nav never offers a module that Nix does
+not load. Otherwise the whole repository is indexed.
 
 ## Limitations
 
-- Names computed by code (`lib.mapAttrs`, interpolation, `lib.mkMerge`) are not indexed.
+- Names computed by code (`lib.mapAttrs`, interpolation) are not found.
 - Aliases passed between files are not followed.
 - den aspects are not supported.
-- Imports made from indexed files are not followed: a `flake.modules` definition in a `_` file or
-  outside the import-tree paths, imported by hand from a module, is not indexed.
+- Files imported by hand from a module, outside the import-tree paths, are not indexed.
 - Options of submodules (`types.submodule { options = …; }`) are not indexed.
 - `home-manager.users.<user>.<path>`, `sharedModules`, inline modules in
-  `imports = [ { … } ]` and `inherit (cfg) …` are not followed.
-
-## License
-
-MIT
+  `imports = [ { … } ]` and `inherit (cfg) …` are not followed yet.
