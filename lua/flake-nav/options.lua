@@ -117,7 +117,13 @@ local module, assign, root_binding
 
 local function inline_modules(list, class, ctx)
   list = strip(list)
-  if list and list:type() == "list_expression" then
+  if list and list:type() == "binary_expression" then
+    local operator = first(list, "operator")
+    if operator and text_of(operator, ctx.src) == "++" then
+      inline_modules(first(list, "left"), class, ctx)
+      inline_modules(first(list, "right"), class, ctx)
+    end
+  elseif list and list:type() == "list_expression" then
     for _, element in ipairs(list:field("element")) do
       local value = strip(element)
       if value and (ATTRSETS[value:type()] or value:type() == "function_expression") then
@@ -221,6 +227,8 @@ root_binding = function(b, segs, value, class, ctx)
     end
   elseif head == "config" then
     assign(rest, value, class, {}, ctx, b)
+  elseif head == "imports" and #rest == 0 then
+    inline_modules(value, class, ctx)
   elseif not SKIP[head] then
     assign(segs, value, class, {}, ctx, b)
   end

@@ -204,7 +204,7 @@ T["assignments"]["interpolated keys, imports and options are not usages"] = func
       uses(
         module(
           "    ${name}.x = 1;",
-          "    imports = [ { y = 1; } ];",
+          "    imports = [ ./y.nix ];",
           "    options.z = lib.mkOption { };"
         )
       )
@@ -416,6 +416,44 @@ end
 
 T["home-manager"]["nothing switches in a flake-parts module"] = function()
   eq(read_keys('{ home-manager.users.demo.modules.editor.theme = "light"; }', "homeManager:"), {})
+end
+
+T["imports"] = MiniTest.new_set()
+
+T["imports"]["inline modules keep the parent class"] = function()
+  local src = host(
+    "    imports = [",
+    "      ./hardware.nix",
+    "      fm.nixos.audio",
+    "      { modules.audio.enable = true; }",
+    "      ({ config, ... }: { x = config.modules.audio.backend; })",
+    "    ];"
+  )
+  eq(
+    read_keys(src, "nixos:modules.audio."),
+    sorted({
+      at(src, 5, "enable", "nixos", "modules.audio.enable"),
+      at(src, 6, "backend", "nixos", "modules.audio.backend"),
+    })
+  )
+end
+
+T["imports"]["concatenated lists are read"] = function()
+  local src = host("    imports = [ ./a.nix ] ++ ([ { modules.audio.enable = true; } ]);")
+  eq(
+    read_keys(src, "nixos:modules.audio."),
+    { at(src, 2, "enable", "nixos", "modules.audio.enable") }
+  )
+end
+
+T["imports"]["inline flake-parts modules can define modules"] = function()
+  local src = lines(
+    "{ lib, ... }:",
+    "{",
+    "  imports = [ { flake.modules.nixos.audio = { options.volume = lib.mkOption { }; }; } ];",
+    "}"
+  )
+  eq(keys(decls(src)), { at(src, 2, "volume", "nixos", "volume") })
 end
 
 return T
