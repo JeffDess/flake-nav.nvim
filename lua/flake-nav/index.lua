@@ -144,6 +144,40 @@ function Index:refresh()
     end
   end
   self.scope = seen
+  self:link_mapped()
+end
+
+function Index:link_mapped()
+  local sources = {}
+  for path, entry in pairs(self.files) do
+    if self.scope[path] then
+      for _, mapped in ipairs(entry.parsed.mapped) do
+        sources[mapped.source] = sources[mapped.source] or {}
+        sources[mapped.source][mapped.class] = true
+      end
+    end
+  end
+  for _, entry in pairs(self.files) do
+    local defs = vim.tbl_filter(function(def)
+      return not def.mapped
+    end, entry.parsed.defs)
+    for _, use in ipairs(entry.parsed.options.uses) do
+      local source, name = use.path:match("^(.+)%.([^.]+)$")
+      if use.assigned and use.class == "flake" and source and sources[source] then
+        for class in pairs(sources[source]) do
+          defs[#defs + 1] = {
+            kind = "module",
+            class = class,
+            name = name,
+            range = use.range,
+            scope_range = use.scope_range,
+            mapped = true,
+          }
+        end
+      end
+    end
+    entry.parsed.defs = defs
+  end
 end
 
 function Index:reset()
@@ -152,16 +186,19 @@ function Index:reset()
   for path, text in pairs(self.docs) do
     self.files[path] = { parsed = self:parse_file(path, text) }
   end
+  self:link_mapped()
 end
 
 function Index:set_document(path, text)
   self.docs[path] = text
   self.files[path] = { parsed = self:parse_file(path, text) }
+  self:link_mapped()
 end
 
 function Index:clear_document(path)
   self.docs[path] = nil
   self.files[path] = nil
+  self:link_mapped()
 end
 
 function Index:parsed(path)

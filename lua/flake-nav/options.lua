@@ -1,53 +1,14 @@
 local parse = require("flake-nav.parse")
 
 local I = parse._internal
-local first, text_of, attrpath, attr_name, bindings, unwrap, ATTRSETS =
-  I.first, I.text_of, I.attrpath, I.attr_name, I.bindings, I.unwrap, I.ATTRSETS
+local first, text_of, attrpath, bindings, unwrap, ATTRSETS =
+  I.first, I.text_of, I.attrpath, I.bindings, I.unwrap, I.ATTRSETS
+local strip, call_of, each_merged = I.strip, I.call_of, I.each_merged
 
 local M = {}
 
 local LEAVES = { mkOption = true, mkEnableOption = true, mkPackageOption = true }
 local SKIP = { imports = true, _file = true, key = true, disabledModules = true }
-local WRAPPERS = {
-  mkIf = true,
-  mkDefault = true,
-  mkForce = true,
-  mkOverride = true,
-  mkBefore = true,
-  mkAfter = true,
-  mkOrder = true,
-}
-
-local function strip(node)
-  while node and node:type() == "parenthesized_expression" do
-    node = first(node, "expression")
-  end
-  return node
-end
-
-local function call_of(node, src)
-  node = strip(node)
-  if not node or node:type() ~= "apply_expression" then
-    return nil
-  end
-  local args = {}
-  while node and node:type() == "apply_expression" do
-    table.insert(args, 1, first(node, "argument"))
-    node = strip(first(node, "function"))
-  end
-  if not node then
-    return nil
-  end
-  if node:type() == "variable_expression" then
-    return text_of(first(node, "name"), src), args
-  end
-  if node:type() == "select_expression" then
-    local attrs = first(node, "attrpath"):field("attr")
-    return attr_name(attrs[#attrs], src), args
-  end
-  return nil
-end
-
 local function extend(path, name)
   local out = { unpack(path) }
   out[#out + 1] = name
@@ -133,24 +94,8 @@ local function inline_modules(list, class, ctx)
   end
 end
 
-local function each_merged(value, ctx, fn)
-  local name, args = call_of(value, ctx.src)
-  if name == "mkMerge" then
-    local list = strip(args[#args])
-    for _, element in
-      ipairs(list and list:type() == "list_expression" and list:field("element") or {})
-    do
-      each_merged(element, ctx, fn)
-    end
-  elseif name and WRAPPERS[name] then
-    each_merged(args[#args], ctx, fn)
-  else
-    fn(value)
-  end
-end
-
 local function assign_value(value, class, path, ctx)
-  each_merged(value, ctx, function(inner)
+  each_merged(value, ctx.src, function(inner)
     inner = strip(inner)
     if not inner then
       return
@@ -174,6 +119,8 @@ assign = function(segs, value, class, path, ctx, binding)
       class = class,
       path = table.concat(names, "."),
       range = { seg.node:range() },
+      scope_range = binding and { binding:range() },
+      assigned = true,
     }
     local target = class == "flake" and context(names)
     if target then
@@ -185,7 +132,7 @@ assign = function(segs, value, class, path, ctx, binding)
     if class ~= "flake" and names[1] == "home-manager" then
       if #names == 3 and names[2] == "users" then
         if i == #segs then
-          each_merged(value, ctx, function(inner)
+          each_merged(value, ctx.src, function(inner)
             module(inner, "homeManager", ctx)
           end)
         else

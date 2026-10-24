@@ -31,14 +31,14 @@ local function attr_name(node, src)
   return nil
 end
 
-local function attrpath(node, src)
+local function attrpath(node, src, partial)
   if not node then
     return nil
   end
   local segs = {}
   for _, child in ipairs(node:field("attr")) do
     local name = attr_name(child, src)
-    if not name then
+    if not name and not partial then
       return nil
     end
     segs[#segs + 1] = { name = name, node = child }
@@ -79,46 +79,258 @@ local function unwrap(node)
   return nil
 end
 
-local function collect_defs(set_owner, path, src, out, under_config)
+local WRAPPERS = {
+  mkIf = true,
+  mkDefault = true,
+  mkForce = true,
+  mkOverride = true,
+  mkBefore = true,
+  mkAfter = true,
+  mkOrder = true,
+}
+
+local function strip(node)
+  while node and node:type() == "parenthesized_expression" do
+    node = first(node, "expression")
+  end
+  return node
+end
+
+local function call_of(node, src)
+  node = strip(node)
+  if not node or node:type() ~= "apply_expression" then
+    return nil
+  end
+  local args = {}
+  while node and node:type() == "apply_expression" do
+    table.insert(args, 1, first(node, "argument"))
+    node = strip(first(node, "function"))
+  end
+  if not node then
+    return nil
+  end
+  if node:type() == "variable_expression" then
+    return text_of(first(node, "name"), src), args
+  end
+  if node:type() == "select_expression" then
+    local attrs = first(node, "attrpath"):field("attr")
+    return attr_name(attrs[#attrs], src), args
+  end
+  return nil
+end
+
+local function each_merged(value, src, fn)
+  local name, args = call_of(value, src)
+  if name == "mkMerge" then
+    local list = strip(args[#args])
+    for _, element in
+      ipairs(list and list:type() == "list_expression" and list:field("element") or {})
+    do
+      each_merged(element, src, fn)
+    end
+  elseif name and WRAPPERS[name] then
+    each_merged(args[#args], src, fn)
+  else
+    fn(value)
+  end
+end
+
+local function inherited_attrs(node, src)
+  local attrs = {}
+  for child in node:iter_children() do
+    if child:type() == "inherited_attrs" then
+      for attr in child:iter_children() do
+        if attr:named() then
+          local name = attr_name(attr, src)
+          if name then
+            attrs[#attrs + 1] = { name = name, node = attr }
+          end
+        end
+      end
+    end
+  end
+  return attrs
+end
+
+local collect_defs
+
+local function module_defs(node, src, out)
+  each_merged(unwrap(node), src, function(inner)
+    inner = strip(inner)
+    if inner and ATTRSETS[inner:type()] then
+      collect_defs(inner, {}, src, out)
+    end
+  end)
+end
+
+local function mapped_source(node, src)
+  local fn, args = call_of(node, src)
+  local arg = fn == "mapAttrs" and #args == 2 and strip(args[2])
+  if not arg or arg:type() ~= "select_expression" then
+    return nil
+  end
+  local base = first(arg, "expression")
+  local segs = attrpath(first(arg, "attrpath"), src)
+  if
+    not segs
+    or not base
+    or base:type() ~= "variable_expression"
+    or text_of(first(base, "name"), src) ~= "config"
+  then
+    return nil
+  end
+  return table.concat(
+    vim.tbl_map(function(seg)
+      return seg.name
+    end, segs),
+    "."
+  )
+end
+
+local function value_defs(value, names, src, out)
+  each_merged(value, src, function(inner)
+    inner = strip(inner)
+    if not inner then
+      return
+    end
+    if ATTRSETS[inner:type()] then
+      collect_defs(inner, names, src, out, true)
+    elseif #names == 3 then
+      local source = mapped_source(inner, src)
+      if source then
+        out.mapped[#out.mapped + 1] = { class = names[3], source = source }
+      else
+        out.computed.classes[names[3]] = true
+      end
+    else
+      out.computed.all = true
+    end
+  end)
+end
+
+local FLAKE_MODULES = { flakeModules = true, flakeModule = true }
+
+local function external_input(node, src)
+  if node:type() ~= "select_expression" then
+    return nil
+  end
+  local base = first(node, "expression")
+  local segs = attrpath(first(node, "attrpath"), src)
+  if not base or base:type() ~= "variable_expression" or not segs or #segs < 2 then
+    return nil
+  end
+  if text_of(first(base, "name"), src) ~= "inputs" or segs[1].name == "self" then
+    return nil
+  end
+  local kind = segs[2].name
+  if FLAKE_MODULES[kind] or (kind == "modules" and segs[3] and segs[3].name == "flake") then
+    return segs[1].name
+  end
+  return nil
+end
+
+local function root_binding(segs, value, src, out)
+  local name = #segs == 1 and segs[1].name
+  if name == "imports" then
+    local list = strip(value)
+    for _, element in
+      ipairs(list and list:type() == "list_expression" and list:field("element") or {})
+    do
+      local inner = strip(element)
+      if inner and (ATTRSETS[inner:type()] or inner:type() == "function_expression") then
+        module_defs(inner, src, out)
+      elseif inner then
+        local input = external_input(inner, src)
+        if input then
+          out.external[input] = true
+        end
+      end
+    end
+    return true
+  end
+  if name == "outputs" then
+    local fn, args = call_of(unwrap(value), src)
+    local last = fn == "mkFlake" and strip(args[#args])
+    if last and (ATTRSETS[last:type()] or last:type() == "function_expression") then
+      module_defs(last, src, out)
+    end
+    return true
+  end
+  return false
+end
+
+local function inherited_defs(b, path, src, out)
+  for _, attr in ipairs(inherited_attrs(b, src)) do
+    if #path == 3 then
+      out.defs[#out.defs + 1] = {
+        kind = "module",
+        class = path[3],
+        name = attr.name,
+        range = { attr.node:range() },
+        scope_range = { b:range() },
+      }
+    elseif #path == 2 then
+      out.computed.classes[attr.name] = true
+    elseif #path == 1 and attr.name == "modules" then
+      out.computed.all = true
+    end
+  end
+end
+
+collect_defs = function(set_owner, path, src, out, under_config)
   for _, b in ipairs(bindings(set_owner)) do
-    if b:type() == "binding" then
-      local segs = attrpath(first(b, "attrpath"), src)
+    if b:type() ~= "binding" and #path > 0 then
+      inherited_defs(b, path, src, out)
+    elseif b:type() == "binding" then
+      local segs = attrpath(first(b, "attrpath"), src, true)
       local value = first(b, "expression")
       if segs and #path == 0 and not under_config and segs[1] and segs[1].name == "config" then
         table.remove(segs, 1)
         if #segs == 0 then
-          if value and ATTRSETS[value:type()] then
-            collect_defs(value, {}, src, out, true)
-          end
+          each_merged(value, src, function(inner)
+            inner = strip(inner)
+            if inner and ATTRSETS[inner:type()] then
+              collect_defs(inner, {}, src, out, true)
+            end
+          end)
           segs = nil
         end
+      elseif segs and #path == 0 and not under_config and root_binding(segs, value, src, out) then
+        segs = nil
       end
       if segs then
         local names = { unpack(path) }
         local descend = true
         for i, seg in ipairs(segs) do
           local depth = #path + i
+          if not seg.name then
+            if depth == 3 then
+              out.computed.all = true
+            elseif depth == 4 then
+              out.computed.classes[names[3]] = true
+            end
+            descend = false
+            break
+          end
           names[depth] = seg.name
           if depth <= #PREFIX and seg.name ~= PREFIX[depth] then
             descend = false
             break
           end
           if depth == 4 then
-            if i == #segs then
-              out[#out + 1] = {
-                kind = "module",
-                class = names[3],
-                name = seg.name,
-                range = { seg.node:range() },
-                scope_range = { b:range() },
-              }
-            end
+            out.defs[#out.defs + 1] = {
+              kind = "module",
+              class = names[3],
+              name = seg.name,
+              range = { seg.node:range() },
+              scope_range = { b:range() },
+            }
             descend = false
             break
           end
         end
-        if descend and value and ATTRSETS[value:type()] then
-          collect_defs(value, names, src, out, true)
+        if descend and value then
+          value_defs(value, names, src, out)
         end
       end
     end
@@ -194,20 +406,9 @@ local function after_root(node, scopes, src)
 end
 
 local function inherited_names(node, src)
-  local names = {}
-  for child in node:iter_children() do
-    if child:type() == "inherited_attrs" then
-      for attr in child:iter_children() do
-        if attr:named() then
-          local name = attr_name(attr, src)
-          if name then
-            names[#names + 1] = name
-          end
-        end
-      end
-    end
-  end
-  return names
+  return vim.tbl_map(function(attr)
+    return attr.name
+  end, inherited_attrs(node, src))
 end
 
 local function binding_scope(owner, src)
@@ -507,6 +708,9 @@ end
 function M.parse(text)
   local result = {
     defs = {},
+    computed = { all = false, classes = {} },
+    mapped = {},
+    external = {},
     uses = {},
     errors = 0,
     options = { decls = {}, uses = {} },
@@ -517,10 +721,7 @@ function M.parse(text)
     return result
   end
   local root = parser:parse()[1]:root()
-  local top = unwrap(first(root, "expression"))
-  if top and ATTRSETS[top:type()] then
-    collect_defs(top, {}, text, result.defs)
-  end
+  module_defs(first(root, "expression"), text, result)
   walk(root, {}, text, result.uses)
   result.options = require("flake-nav.options").collect(root, text)
   result.inputs = require("flake-nav.inputs").collect(root, text)
@@ -536,6 +737,9 @@ M._internal = {
   bindings = bindings,
   inherited_names = inherited_names,
   unwrap = unwrap,
+  strip = strip,
+  call_of = call_of,
+  each_merged = each_merged,
   ATTRSETS = ATTRSETS,
 }
 

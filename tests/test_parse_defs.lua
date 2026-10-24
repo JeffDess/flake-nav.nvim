@@ -69,8 +69,121 @@ T["under config"] = function()
   eq(#parse.parse("{ foo.config.flake.modules.nixos.z = { }; }").defs, 0)
 end
 
-T["longer path is not a definition"] = function()
-  eq(#parse.parse("{ flake.modules.nixos.locale.imports = [ ]; }").defs, 0)
+T["classes defined by a computed value"] = function()
+  local function computed(src)
+    return parse.parse(src).computed
+  end
+  eq(computed("{ flake.modules.nixos.x = { }; }"), { all = false, classes = {} })
+  eq(computed("{ config.flake.modules.nixos = f x; }"), { all = false, classes = { nixos = true } })
+  eq(computed('{ flake.modules.nixos."${n}" = { }; }'), { all = false, classes = { nixos = true } })
+  eq(
+    computed("{ flake.modules = { darwin = { } // x; }; }"),
+    { all = false, classes = { darwin = true } }
+  )
+  eq(computed("{ flake.modules = f x; }"), { all = true, classes = {} })
+  eq(computed("{ flake = f x; }"), { all = true, classes = {} })
+  eq(computed('{ flake.modules."${c}".x = { }; }'), { all = true, classes = {} })
+  eq(computed("{ flake.nixosModules = f x; other = f x; }"), { all = false, classes = {} })
+end
+
+T["classes mapped from a flake option"] = function()
+  local result = parse.parse(
+    "{ lib, config, ... }: { config.flake.modules.nixos = lib.mapAttrs mk config.users; }"
+  )
+  eq(result.mapped, { { class = "nixos", source = "users" } })
+  eq(result.computed, { all = false, classes = {} })
+  eq(
+    parse.parse("{ flake.modules.homeManager = builtins.mapAttrs f config.a.b; }").mapped,
+    { { class = "homeManager", source = "a.b" } }
+  )
+  local other = parse.parse("{ flake.modules.nixos = lib.mapAttrs f x; }")
+  eq(other.mapped, {})
+  eq(other.computed, { all = false, classes = { nixos = true } })
+end
+
+T["flake modules imported from inputs"] = function()
+  local src = lines(
+    "{ inputs, ... }:",
+    "{",
+    "  imports = [",
+    "    inputs.lib.flakeModules.default",
+    "    inputs.parts.flakeModule",
+    "    inputs.other.modules.flake.tools",
+    "    inputs.self.flakeModules.local",
+    "    inputs.pkgs.nixosModules.x",
+    "    ./local.nix",
+    "  ];",
+    "}"
+  )
+  eq(parse.parse(src).external, { lib = true, parts = true, other = true })
+  eq(
+    parse.parse("{ outputs = inputs: mkFlake { } { imports = [ inputs.lib.flakeModules.x ]; }; }").external,
+    { lib = true }
+  )
+end
+
+T["longer path is a partial definition"] = function()
+  local result = parse.parse("{ flake.modules.nixos.locale.imports = [ ]; }")
+  eq(names(result), { "nixos.locale" })
+  eq(result.defs[1].range, { 0, 22, 0, 28 })
+  eq(names(parse.parse("{ flake.modules.nixos = { a.imports = [ ]; a.x = 1; }; }")), {
+    "nixos.a",
+    "nixos.a",
+  })
+end
+
+T["through mkIf and mkMerge"] = function()
+  eq(
+    names(parse.parse("{ lib, ... }: { config = lib.mkIf c { flake.modules.nixos.a = { }; }; }")),
+    {
+      "nixos.a",
+    }
+  )
+  eq(
+    names(
+      parse.parse(
+        "{ config = mkMerge [ { flake.modules.nixos.b = { }; } (mkIf c { flake.modules.nixos.c = { }; }) ]; }"
+      )
+    ),
+    { "nixos.b", "nixos.c" }
+  )
+  eq(names(parse.parse("{ flake.modules.nixos = lib.mkMerge [ { d = { }; } ]; }")), { "nixos.d" })
+  eq(names(parse.parse("{ lib, ... }: lib.mkMerge [ { flake.modules.nixos.e = { }; } ]")), {
+    "nixos.e",
+  })
+  eq(parse.parse("{ config = lib.mkIf c (f x); }").computed, { all = false, classes = {} })
+end
+
+T["inherited names"] = function()
+  local result = parse.parse("{ flake.modules.nixos = { inherit (x) a; inherit b; }; }")
+  eq(names(result), { "nixos.a", "nixos.b" })
+  eq(result.defs[1].range, { 0, 38, 0, 39 })
+  eq(
+    parse.parse("{ flake.modules = { inherit (x) darwin; }; }").computed,
+    { all = false, classes = { darwin = true } }
+  )
+end
+
+T["inline modules in imports and mkFlake"] = function()
+  eq(names(parse.parse("{ imports = [ { flake.modules.nixos.a = { }; } ./b.nix ]; }")), {
+    "nixos.a",
+  })
+  local flake = lines(
+    "{",
+    "  outputs = inputs: inputs.parts.lib.mkFlake { inherit inputs; } {",
+    "    flake.modules.nixos.b = { };",
+    "  };",
+    "}"
+  )
+  eq(names(parse.parse(flake)), { "nixos.b" })
+  eq(
+    names(parse.parse("{ outputs = i: mkFlake { } ({ ... }: { flake.modules.nixos.c = { }; }); }")),
+    { "nixos.c" }
+  )
+  eq(parse.parse("{ outputs = i: mkFlake { } ./parts.nix; }").computed, {
+    all = false,
+    classes = {},
+  })
 end
 
 T["only from the root attrset"] = function()
