@@ -164,6 +164,10 @@ assign = function(segs, value, class, path, ctx)
 end
 
 module = function(node, class, ctx)
+  local fn = strip(node)
+  if fn and fn:type() == "function_expression" then
+    ctx.modules[fn:id()] = { class = class }
+  end
   local body = unwrap(node)
   if not body or not ATTRSETS[body:type()] then
     return
@@ -185,9 +189,131 @@ module = function(node, class, ctx)
   end)
 end
 
+local function lookup(scopes, name)
+  for i = #scopes, 1, -1 do
+    local found = scopes[i][name]
+    if found ~= nil then
+      return found
+    end
+  end
+  return nil
+end
+
+local function config_path(node, scopes, ctx)
+  node = strip(node)
+  if not node then
+    return nil
+  end
+  local base, segs = node, {}
+  if node:type() == "select_expression" then
+    base = first(node, "expression")
+    segs = attrpath(first(node, "attrpath"), ctx.src)
+  end
+  if not segs or not base or base:type() ~= "variable_expression" then
+    return nil
+  end
+  local bound = lookup(scopes, text_of(first(base, "name"), ctx.src))
+  if type(bound) ~= "table" then
+    return nil
+  end
+  return bound, segs
+end
+
+local function function_scope(node, ctx)
+  local scope = {}
+  for _, universal in ipairs(node:field("universal")) do
+    scope[text_of(universal, ctx.src)] = false
+  end
+  for _, formals in ipairs(node:field("formals")) do
+    for _, formal in ipairs(formals:field("formal")) do
+      local name = first(formal, "name")
+      if name then
+        scope[text_of(name, ctx.src)] = false
+      end
+    end
+  end
+  local mod = ctx.modules[node:id()]
+  if mod and scope.config == false then
+    scope.config = { class = mod.class, path = {} }
+  end
+  return scope
+end
+
+local function shadow_bindings(node, scope, ctx)
+  for _, b in ipairs(bindings(node)) do
+    if b:type() == "binding" then
+      local segs = attrpath(first(b, "attrpath"), ctx.src)
+      if segs and segs[1] then
+        scope[segs[1].name] = false
+      end
+    end
+  end
+end
+
+local function let_scope(node, scopes, ctx)
+  local scope = {}
+  shadow_bindings(node, scope, ctx)
+  scopes[#scopes + 1] = scope
+  for _, b in ipairs(bindings(node)) do
+    local segs = b:type() == "binding" and attrpath(first(b, "attrpath"), ctx.src)
+    if segs and #segs == 1 then
+      local bound, rest = config_path(first(b, "expression"), scopes, ctx)
+      if bound then
+        local path = { unpack(bound.path) }
+        for _, seg in ipairs(rest) do
+          path[#path + 1] = seg.name
+        end
+        scope[segs[1].name] = { class = bound.class, path = path }
+      end
+    end
+  end
+  table.remove(scopes)
+  return scope
+end
+
+local function reads(node, scopes, ctx)
+  local kind = node:type()
+  local scope
+  if kind == "function_expression" then
+    scope = function_scope(node, ctx)
+  elseif kind == "let_expression" then
+    scope = let_scope(node, scopes, ctx)
+  elseif kind == "rec_attrset_expression" then
+    scope = {}
+    shadow_bindings(node, scope, ctx)
+  end
+  if scope then
+    scopes[#scopes + 1] = scope
+  end
+  if kind == "select_expression" then
+    local bound, segs = config_path(node, scopes, ctx)
+    if bound then
+      local names = bound.path
+      for _, seg in ipairs(segs) do
+        names = extend(names, seg.name)
+        ctx.uses[#ctx.uses + 1] = {
+          kind = "option",
+          class = bound.class,
+          path = table.concat(names, "."),
+          range = { seg.node:range() },
+        }
+      end
+    end
+  end
+  for child in node:iter_children() do
+    if child:named() then
+      reads(child, scopes, ctx)
+    end
+  end
+  if scope then
+    table.remove(scopes)
+  end
+end
+
 function M.collect(root, src)
-  local ctx = { src = src, decls = {}, uses = {} }
+  local ctx = { src = src, decls = {}, uses = {}, modules = {} }
   module(first(root, "expression"), "flake", ctx)
+  reads(root, {}, ctx)
   return { decls = ctx.decls, uses = ctx.uses }
 end
 

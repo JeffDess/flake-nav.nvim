@@ -247,4 +247,93 @@ T["assignments"]["other module functions have an unknown class"] = function()
   })
 end
 
+local function read_keys(src, prefix)
+  local out = {}
+  for _, key in ipairs(keys(uses(src))) do
+    if key:find(prefix, 1, true) == 1 then
+      out[#out + 1] = key
+    end
+  end
+  return out
+end
+
+local function sorted(list)
+  table.sort(list)
+  return list
+end
+
+local function at(src, row, word, class, path)
+  local line = vim.split(src, "\n")[row + 1]
+  return ("%s:%s@%d:%d"):format(class, path, row, line:find(word, 1, true) - 1)
+end
+
+T["reads"] = MiniTest.new_set()
+
+T["reads"]["config selections in a module that binds config"] = function()
+  local src = lines(
+    "{",
+    "  flake.modules.nixos.audio = { config, lib, ... }: {",
+    "    x = config.modules.audio.enable;",
+    "  };",
+    "}"
+  )
+  eq(
+    read_keys(src, "nixos:modules"),
+    sorted({
+      at(src, 2, "audio", "nixos", "modules.audio"),
+      at(src, 2, "enable", "nixos", "modules.audio.enable"),
+      at(src, 2, "modules", "nixos", "modules"),
+    })
+  )
+end
+
+T["reads"]["aliases of config paths"] = function()
+  local src = lines(
+    "{",
+    "  flake.modules.nixos.audio = { config, lib, ... }:",
+    "    let",
+    "      cfg = config.modules.audio;",
+    "    in",
+    "    { y = cfg.backend; };",
+    "}"
+  )
+  eq(
+    read_keys(src, "nixos:modules"),
+    sorted({
+      at(src, 5, "backend", "nixos", "modules.audio.backend"),
+      at(src, 3, "audio", "nixos", "modules.audio"),
+      at(src, 3, "modules", "nixos", "modules"),
+    })
+  )
+end
+
+T["reads"]["an inner module without config reads the flake-parts config"] = function()
+  local src = lines(
+    "{ config, ... }:",
+    "{",
+    "  configurations.nixos.desktop.module = { lib, ... }: {",
+    "    z = config.flake.modules;",
+    "  };",
+    "}"
+  )
+  eq(
+    read_keys(src, "flake:flake"),
+    sorted({
+      at(src, 3, "flake", "flake", "flake"),
+      at(src, 3, "modules", "flake", "flake.modules"),
+    })
+  )
+end
+
+T["reads"]["a rebound config is not a read"] = function()
+  local src = lines(
+    "{",
+    "  flake.modules.nixos.audio = { config, ... }: {",
+    "    w = (config: config.modules) 1;",
+    "  };",
+    "}"
+  )
+  eq(read_keys(src, "nixos:modules"), {})
+end
+
 return T
