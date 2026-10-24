@@ -63,6 +63,12 @@ T["free nesting"] = function()
   eq(names(parse.parse("{ flake = rec { modules = { generic.y = { }; }; }; }")), { "generic.y" })
 end
 
+T["under config"] = function()
+  eq(names(parse.parse("{ config.flake.modules.nixos.x = { }; }")), { "nixos.x" })
+  eq(names(parse.parse("{ config = { flake.modules.nixos.y = { }; }; }")), { "nixos.y" })
+  eq(#parse.parse("{ foo.config.flake.modules.nixos.z = { }; }").defs, 0)
+end
+
 T["longer path is not a definition"] = function()
   eq(#parse.parse("{ flake.modules.nixos.locale.imports = [ ]; }").defs, 0)
 end
