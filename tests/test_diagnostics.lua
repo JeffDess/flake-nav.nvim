@@ -155,6 +155,74 @@ T["unused definitions"] = function()
   vim.fn.delete(root, "rf")
 end
 
+local FLAKE = {
+  "{",
+  '  inputs.nixpkgs.url = "github:nixos/nixpkgs";',
+  '  inputs.hooks.inputs.nixpkgs.follows = "missing";',
+  "  outputs = { self, nixpkgs, registry, ... }: { };",
+  "}",
+}
+
+local MODULE = {
+  "{ inputs, ... }:",
+  "{ imports = [ inputs.hooks.a inputs.registry.b inputs.pinned.c inputs.missing.d ]; }",
+}
+
+local LOCK = {
+  '{ "nodes": { "root": { "inputs": { "pinned": "pinned" } }, "pinned": { } },',
+  '  "root": "root", "version": 7 }',
+}
+
+T["unknown inputs"] = function()
+  local idx, root = project({
+    ["flake.nix"] = FLAKE,
+    ["flake.lock"] = LOCK,
+    ["module.nix"] = MODULE,
+    ["vendor/flake.nix"] = { '{ inputs.x.follows = "missing"; outputs = { other }: { }; }' },
+    ["vendor/module.nix"] = MODULE,
+  })
+  local function at(rel)
+    return summary(diagnostics.compute(idx, vim.fs.joinpath(root, rel), { unknown = true }))
+  end
+  local warning = vim.lsp.protocol.DiagnosticSeverity.Warning
+  local message = "Unknown flake input missing"
+  eq(at("module.nix"), {
+    { range = span(MODULE, 1, "missing"), severity = warning, message = message },
+  })
+  eq(at("flake.nix"), {
+    { range = span(FLAKE, 2, "missing"), severity = warning, message = message },
+  })
+  eq(at("vendor/flake.nix"), {})
+  eq(at("vendor/module.nix"), {})
+  vim.fn.delete(root, "rf")
+end
+
+T["no unknown input without declarations nor lock"] = function()
+  local idx, root = project({
+    ["flake.nix"] = { "{ inputs = import ./inputs.nix; outputs = _: { }; }" },
+    ["module.nix"] = MODULE,
+  })
+  eq(diagnostics.compute(idx, vim.fs.joinpath(root, "module.nix"), { unknown = true }), {})
+  vim.fn.delete(root, "rf")
+end
+
+T["a shared context gives the same diagnostics"] = function()
+  local idx, root = project({
+    ["flake.nix"] = FLAKE,
+    ["flake.lock"] = LOCK,
+    ["module.nix"] = MODULE,
+    ["base.nix"] = { "{ flake.modules.nixos = { base = { }; old = { }; }; }" },
+    ["host.nix"] = HOST,
+  })
+  local cfg = { unknown = true, unused = true }
+  local context = diagnostics.context(idx)
+  for _, rel in ipairs({ "flake.nix", "module.nix", "base.nix", "host.nix" }) do
+    local path = vim.fs.joinpath(root, rel)
+    eq(diagnostics.compute(idx, path, cfg, context), diagnostics.compute(idx, path, cfg))
+  end
+  vim.fn.delete(root, "rf")
+end
+
 T["nothing outside the index scope"] = function()
   local idx, root = project({
     ["flake.nix"] = { "{ outputs = _: { }; }" },
