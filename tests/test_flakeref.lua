@@ -24,8 +24,37 @@ local CASES = {
   { "sourcehut:~user/repo/main", "https://git.sr.ht/~user/repo/tree/main" },
   { "git+https://codeberg.org/owner/repo.git?ref=main", "https://codeberg.org/owner/repo" },
   { "git+http://git.example.org/repo", "http://git.example.org/repo" },
-  { "https://example.org/archive.tar.gz", "https://example.org/archive.tar.gz" },
-  { "http://example.org/archive.tar.gz", "http://example.org/archive.tar.gz" },
+  { "https://example.org/archive.tar.gz", nil },
+  { "http://example.org/archive.zip", nil },
+  { "tarball+https://example.org/flake", nil },
+  { "https://example.org/flake.nix", "https://example.org/flake.nix" },
+  { "file+http://example.org/flake.nix", "http://example.org/flake.nix" },
+  {
+    "https://github.com/nixos/nixpkgs/archive/nixos-unstable.tar.gz",
+    "https://github.com/nixos/nixpkgs/tree/nixos-unstable",
+  },
+  {
+    "https://github.com/nixos/nixpkgs/archive/refs/heads/main.zip",
+    "https://github.com/nixos/nixpkgs/tree/main",
+  },
+  {
+    "https://github.com/numtide/treefmt/archive/refs/tags/v2.0.tar.gz?dir=nix",
+    "https://github.com/numtide/treefmt/tree/v2.0/nix",
+  },
+  {
+    "tarball+https://github.com/nixos/nixpkgs/archive/abc123",
+    "https://github.com/nixos/nixpkgs/tree/abc123",
+  },
+  {
+    "https://gitlab.com/group/sub/repo/-/archive/main/repo-main.tar.gz",
+    "https://gitlab.com/group/sub/repo/-/tree/main",
+  },
+  {
+    "https://git.sr.ht/~user/repo/archive/v1.0.tar.gz",
+    "https://git.sr.ht/~user/repo/tree/v1.0",
+  },
+  { "https://codeberg.org/owner/repo/archive/main.tar.gz", nil },
+  { "tarball+file:///srv/flake.tar.gz", nil },
   { "path:./vendor/flake", nil },
   { "git+file:///srv/repo", nil },
   { "git+ssh://git@example.org/team/repo.git", "https://example.org/team/repo" },
@@ -74,8 +103,16 @@ T["from_attrs builds the same URL as the string form"] = function()
     "https://codeberg.org/owner/repo"
   )
   eq(
-    flakeref.from_attrs({ type = "tarball", url = "https://example.org/a.tar.gz" }),
-    "https://example.org/a.tar.gz"
+    flakeref.from_attrs({
+      type = "tarball",
+      url = "https://github.com/nixos/nixpkgs/archive/main.tar.gz",
+    }),
+    "https://github.com/nixos/nixpkgs/tree/main"
+  )
+  eq(flakeref.from_attrs({ type = "tarball", url = "https://example.org/flake" }), nil)
+  eq(
+    flakeref.from_attrs({ type = "file", url = "https://example.org/flake.nix" }),
+    "https://example.org/flake.nix"
   )
   eq(flakeref.from_attrs({ type = "path", path = "/srv/flake" }), nil)
   eq(flakeref.from_attrs({ type = "github", owner = "nixos" }), nil)
