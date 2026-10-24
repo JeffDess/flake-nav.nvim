@@ -7,6 +7,10 @@ local FORGES = {
   sourcehut = { host = "git.sr.ht", tree = "/tree/", commit = "/commit/" },
 }
 
+local GIT = { ["git+https"] = "https", ["git+http"] = "http", ["git+ssh"] = "https" }
+local KNOWN_HOSTS =
+  { ["github.com"] = "github", ["gitlab.com"] = "gitlab", ["git.sr.ht"] = "sourcehut" }
+
 local function query(text)
   local params = {}
   for key, value in (text or ""):gmatch("([^&=]+)=([^&]*)") do
@@ -48,8 +52,23 @@ function M.to_url(ref)
     end
     return forge_url(scheme, owner, repo, tail ~= "" and tail or nil, query(params))
   end
-  if scheme == "git+https" or scheme == "git+http" then
-    return ((scheme:sub(5) .. ":" .. body):gsub("%.git$", ""))
+  if GIT[scheme] then
+    local authority, path = body:match("^//([^/]+)/(.+)$")
+    if not authority then
+      return nil
+    end
+    local host = authority:gsub("^.*@", "")
+    -- NOTE: Best guess for SSH remotes: the forge serves its web pages over HTTPS on the same host.
+    if scheme == "git+ssh" then
+      host = host:gsub(":%d+$", "")
+    end
+    path = path:gsub("%.git$", "")
+    local kind = KNOWN_HOSTS[host]
+    local owner, repo = path:match("^(.+)/([^/]+)$")
+    if kind and owner then
+      return forge_url(kind, owner, repo, nil, query(params))
+    end
+    return GIT[scheme] .. "://" .. host .. "/" .. path
   end
   if scheme == "https" or scheme == "http" then
     return ref
