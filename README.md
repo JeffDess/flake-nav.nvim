@@ -4,24 +4,25 @@ Go to definition, go to references and show definition for
 [dendritic](https://github.com/mightyiam/dendritic) flake-parts configurations
 in Neovim.
 
-In a dendritic configuration, modules refer to each other by name and hosts set
-options declared elsewhere. Nix language servers cannot follow those links
+In a dendritic configuration, modules refer to each other by name, hosts set
+options declared elsewhere, and every file reaches for flake inputs. Nix language servers cannot follow those links
 without evaluating the flake. flake-nav follows them as you type:
 
 ```nix
 imports = with fm.nixos; [ audio desktop ];  # on `audio`: its module, every place that imports it
 modules.audio.enable = true;                 # on `enable`: its declaration, every host that sets it
+imports = [ inputs.hooks.flakeModule ];      # on `hooks`: its input in flake.nix, its locked revision
 ```
 
 It works alongside nixd or nil.
 
 ## Features
 
-| | Modules (`fm.nixos.audio`) | Options (`modules.audio.enable`) |
-| --- | --- | --- |
-| **Go to definition** | the `flake.modules.nixos.audio` definition | the `options.modules.audio…` declaration, from any part of the path |
-| **Go to references** | every place that uses the module | every host that sets the option and every module that reads it |
-| **Show definition** | the module's source | the option's declaration |
+| | Modules (`fm.nixos.audio`) | Options (`modules.audio.enable`) | Inputs (`inputs.hooks`) |
+| --- | --- | --- | --- |
+| **Go to definition** | the `flake.modules.nixos.audio` definition | the `options.modules.audio…` declaration, from any part of the path | the input in `flake.nix`; on a local `path:` input, its own `flake.nix` |
+| **Go to references** | every place that uses the module | every host that sets the option and every module that reads it | every place that uses the input, `follows` included |
+| **Show definition** | the module's source | the option's declaration | its reference, web page, locked revision and `follows` |
 
 Options are those declared in your repository. Unsaved changes are taken into
 account, and paths ignored by import-tree are ignored too.
@@ -171,6 +172,16 @@ They are found where they are set, directly or under `config`, through `mkIf`,
 Options that your repository does not declare, such as nixpkgs options, are
 left to your other language servers.
 
+Inputs are declared in the `flake.nix` at the root and used as:
+
+```nix
+inputs.hooks.flakeModule             # { inputs, ... }: or outputs = inputs@{ … }:
+inputs'.hooks.packages.default       # perSystem = { inputs', ... }:
+self.inputs.hooks
+outputs = { self, nixpkgs, ... }:    # nixpkgs, and every use of it in outputs
+inputs.hooks.inputs.nixpkgs.follows = "nixpkgs";
+```
+
 ## What gets indexed
 
 When `flake.nix` uses import-tree (`inputs.import-tree ./modules`), only the
@@ -185,3 +196,4 @@ not load. Otherwise the whole repository is indexed.
 - Files imported by hand from a module, outside the import-tree paths, are not indexed.
 - Options of submodules (`types.submodule { options = …; }`) are not indexed.
 - `inherit (cfg) …` is not followed yet.
+- The inputs of your inputs are not followed beyond `follows`.
