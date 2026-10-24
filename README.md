@@ -142,8 +142,17 @@ vim.lsp.config("nixd", {
 
 ## Supported patterns
 
-Modules are defined with `flake.modules.<class>.<name> = …`, in any nesting
-under `flake = { … }`, and used as:
+Modules are defined with `flake.modules.<class>.<name> = …`:
+
+- in any nesting under `flake = { … }`, also as `config.flake…` or
+  `config = { flake… }` at the top of a file;
+- through `mkIf`, `mkMerge` and the other priority wrappers;
+- piece by piece (`flake.modules.nixos.audio.imports = …`) or with `inherit`;
+- in inline modules of `imports = [ … ]` and of `mkFlake`;
+- as `lib.mapAttrs f config.<option>`: the names are those set under
+  `<option>` in your flake-parts modules (`users.alice = …`).
+
+They are used as:
 
 ```nix
 fm.nixos.audio                       # fm = config.flake.modules;
