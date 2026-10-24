@@ -62,6 +62,20 @@ T["attrset references link the whole attrset"] = function()
   })
 end
 
+T["git attrsets keep their attrset link"] = function()
+  local src = lines(
+    "{",
+    '  inputs.repo = { type = "git"; url = "https://codeberg.org/owner/repo.git"; };',
+    "}"
+  )
+  eq(parse.inputs(src), {
+    {
+      url = "https://codeberg.org/owner/repo",
+      range = span(src, 1, '{ type = "git"; url = "https://codeberg.org/owner/repo.git"; }'),
+    },
+  })
+end
+
 T["interpolated, unsupported and non-input strings are skipped"] = function()
   local src = lines(
     "{",

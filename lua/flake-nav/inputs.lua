@@ -47,6 +47,8 @@ local function walk(owner, path, state)
           d.attrs_range = { value:range() }
         elseif #names == 3 and names[3] == "url" and text then
           d.ref, d.ref_range = text, { value:range() }
+          d.attr_values = d.attr_values or {}
+          d.attr_values.url = text
         elseif #names == 3 and names[3] == "follows" and text then
           d.follows_target = text
         elseif #names == 3 and text then
