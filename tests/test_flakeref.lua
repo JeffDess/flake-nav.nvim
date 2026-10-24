@@ -30,6 +30,11 @@ local CASES = {
   { "git+file:///srv/repo", nil },
   { "git+ssh://git@example.org/team/repo.git", "https://example.org/team/repo" },
   { "git+ssh://git@git.example.org:2222/team/repo", "https://git.example.org/team/repo" },
+  { "git+ssh://git@git.example.org:team/repo.git", "https://git.example.org/team/repo" },
+  {
+    "git+ssh://git@github.com:nixos/nixpkgs?ref=nixos-unstable",
+    "https://github.com/nixos/nixpkgs/tree/nixos-unstable",
+  },
   {
     "git+ssh://git@github.com/nixos/nixpkgs.git?ref=nixos-unstable",
     "https://github.com/nixos/nixpkgs/tree/nixos-unstable",

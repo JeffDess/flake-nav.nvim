@@ -60,7 +60,12 @@ function M.to_url(ref)
     local host = authority:gsub("^.*@", "")
     -- NOTE: Best guess for SSH remotes: the forge serves its web pages over HTTPS on the same host.
     if scheme == "git+ssh" then
-      host = host:gsub(":%d+$", "")
+      local name, seg = host:match("^([^:]+):(.+)$")
+      if seg and not seg:match("^%d+$") then
+        host, path = name, seg .. "/" .. path
+      else
+        host = name or host
+      end
     end
     path = path:gsub("%.git$", "")
     local kind = KNOWN_HOSTS[host]
