@@ -126,6 +126,30 @@ T["keeps other locations of a resolved module"] = function()
   eq(definitions(buf, 6, 59), { ["flake-nav"] = 1, ["fake-nixd"] = 1 })
 end
 
+local function locale_definition(character)
+  return function()
+    return {
+      uri = vim.uri_from_fname(vim.fs.joinpath(fixture, "modules/features/locale.nix")),
+      range = {
+        start = { line = 5, character = character },
+        ["end"] = { line = 5, character = character },
+      },
+    }
+  end
+end
+
+T["drops locations on the line of a flake-nav definition"] = function()
+  require("flake-nav").setup()
+  local buf = open_with_fake(locale_definition(0))
+  eq(definitions(buf, 6, 59), { ["flake-nav"] = 1, ["fake-nixd"] = 0 })
+end
+
+T["filter_with_definitions = false keeps duplicates"] = function()
+  require("flake-nav").setup({ filter_with_definitions = false })
+  local buf = open_with_fake(locale_definition(0))
+  eq(definitions(buf, 6, 59), { ["flake-nav"] = 1, ["fake-nixd"] = 1 })
+end
+
 T["filter_with_definitions = false keeps it"] = function()
   require("flake-nav").setup({ filter_with_definitions = false })
   local buf = open_with_fake(with_keyword)

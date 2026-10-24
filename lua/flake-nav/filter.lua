@@ -25,18 +25,40 @@ local function on_keyword(loc, uri, range)
     and same(target["end"], range["end"])
 end
 
-function M.locations(result, uri, range)
+local function drop(result, unwanted)
   if result == nil then
     return nil
   end
   local list = vim.islist(result) and result or { result }
   local kept = vim.tbl_filter(function(loc)
-    return not on_keyword(loc, uri, range)
+    return not unwanted(loc)
   end, list)
   if #kept == #list then
     return result
   end
   return kept
+end
+
+function M.duplicates(result, own)
+  return drop(result, function(loc)
+    local target = loc.targetSelectionRange or loc.range
+    for _, mine in ipairs(own) do
+      if
+        target
+        and (loc.targetUri or loc.uri) == mine.uri
+        and target.start.line == mine.range.start.line
+      then
+        return true
+      end
+    end
+    return false
+  end)
+end
+
+function M.locations(result, uri, range)
+  return drop(result, function(loc)
+    return on_keyword(loc, uri, range)
+  end)
 end
 
 -- NOTE: buf_request_all, fzf-lua, snacks and telescope pass their own callback to
@@ -55,8 +77,14 @@ function M.wrap(client)
         and uri
         and params.position
         and server.with_range(uri, params.position)
+      local own = M.enabled
+          and method == DEFINITION
+          and uri
+          and params.position
+          and server.definition_locations(uri, params.position)
+        or {}
       local root = M.remap and uri and server.root_for(uri)
-      if range or root then
+      if range or root or #own > 0 then
         local inner = handler
         handler = function(err, result, ...)
           if range then
@@ -65,6 +93,7 @@ function M.wrap(client)
           if root then
             result = remap.locations(result, root, M.store)
           end
+          result = M.duplicates(result, own)
           return inner(err, result, ...)
         end
       end

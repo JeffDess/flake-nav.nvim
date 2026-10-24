@@ -100,6 +100,20 @@ local function references(index, ref, include)
   return index:references(ref.class, ref.name, include)
 end
 
+function M.definition_locations(uri, pos)
+  local path = vim.uri_to_fname(uri)
+  local index = index_for(path)
+  local ref = index and lookup(index, path, pos)
+  if not ref then
+    return {}
+  end
+  local out = {}
+  for _, entry in ipairs(definitions(index, ref)) do
+    out[#out + 1] = location(index, entry)
+  end
+  return out
+end
+
 function M.with_range(uri, pos)
   local path = vim.uri_to_fname(uri)
   local index = index_for(path)
