@@ -114,6 +114,14 @@ T["flake inputs"] = function()
   eq(items[2].kind, vim.lsp.protocol.CompletionItemKind.Reference)
   local perSystem = { "  perSystem = { inputs', ... }: { x = inputs'.|", "}" }
   eq(#complete(idx, root, perSystem, "|", head), 4)
+  local flake = vim.fs.joinpath(root, "flake.nix")
+  local text = vim.deepcopy(INPUTS["flake.nix"])
+  text[3] =
+    '  inputs.hooks = { url = "github:cachix/git-hooks.nix"; inputs.nixpkgs.follows = ""; };'
+  idx:set_document(flake, table.concat(text, "\n"))
+  local follows =
+    completion.items(idx, flake, { line = 2, character = text[3]:find('""', 1, true) })
+  eq(#follows, 4)
   vim.fn.delete(root, "rf")
 end
 
