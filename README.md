@@ -23,6 +23,7 @@ It works alongside nixd or nil.
 | **Go to definition** | the `flake.modules.nixos.audio` definition | the `options.modules.audio…` declaration, from any part of the path | the input in `flake.nix`; on a local `path:` input, its own `flake.nix` |
 | **Go to references** | every place that uses the module | every host that sets the option and every module that reads it | every place that uses the input, `follows` included |
 | **Show definition** | the module's source | the option's declaration | its reference, web page, locked revision and `follows` |
+| **Completion** | classes after `fm.`, modules after `fm.nixos.` and in `with` lists | | inputs after `inputs.` and in `follows` |
 
 Options are those declared in your repository. Unsaved changes are taken into
 account, and paths ignored by import-tree are ignored too.
@@ -85,6 +86,20 @@ Use your LSP mappings on a module name or on an option path. Neovim's defaults:
 | go to references | `grr` |
 | show definition | `K` |
 | open a flake input in the browser (in `flake.nix`) | `gx` |
+
+Completion works with any completion plugin. With Neovim's built-in
+completion, enable it in your config:
+
+```lua
+vim.api.nvim_create_autocmd("LspAttach", {
+  callback = function(args)
+    vim.lsp.completion.enable(true, args.data.client_id, args.buf, { autotrigger = true })
+  end,
+})
+```
+
+It opens after a `.`; in `with` lists and `follows = "…"`, open it with
+`CTRL-X CTRL-O`.
 
 To open flake inputs with another mapping:
 
