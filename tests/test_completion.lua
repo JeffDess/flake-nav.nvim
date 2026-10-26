@@ -83,6 +83,14 @@ T["a partial name is replaced"] = function()
   vim.fn.delete(root, "rf")
 end
 
+T["with lists leave out present names and names to quote"] = function()
+  local idx, root = project(MODULES)
+  eq(labels(complete(idx, root, { "  imports = with fm.nixos; [ base |", "}" }, "|")), { "locale" })
+  local multi = { "  imports = with fm.nixos; [", "    locale", "    |", "  ];", "}" }
+  eq(labels(complete(idx, root, multi, "|")), { "base" })
+  vim.fn.delete(root, "rf")
+end
+
 T["nothing outside a module path"] = function()
   local idx, root = project(MODULES)
   eq(complete(idx, root, { "  x = pkgs.|", "}" }, "|"), nil)
