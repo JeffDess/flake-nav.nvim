@@ -111,11 +111,15 @@ function Index:scan()
   return found
 end
 
-function Index:parse_file(path, text)
-  local parsed = parse.parse(text)
+function Index:owns_inputs(path)
   local nested = vim.fs.basename(path) == "flake.nix" and path ~= self:flake_path()
   local owner = vim.fs.root(path, "flake.nix")
-  if nested or (owner and vim.fs.normalize(owner) ~= vim.fs.normalize(self.root)) then
+  return not (nested or (owner and vim.fs.normalize(owner) ~= vim.fs.normalize(self.root)))
+end
+
+function Index:parse_file(path, text)
+  local parsed = parse.parse(text)
+  if not self:owns_inputs(path) then
     parsed.inputs = { decls = {}, uses = {} }
   end
   return parsed
