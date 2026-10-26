@@ -15,7 +15,15 @@ end
 
 local function find(parsed, row, col)
   for _, use in ipairs(parsed.uses) do
-    if at(use, row, col) then
+    if at(use, row, col) and use.binder_range then
+      local present = {}
+      for _, other in ipairs(parsed.uses) do
+        if other.binder_range and vim.deep_equal(other.binder_range, use.binder_range) then
+          present[other.name] = true
+        end
+      end
+      return { kind = "module", class = use.class, present = present }
+    elseif at(use, row, col) then
       return { kind = "module", class = use.class }
     end
   end
@@ -122,16 +130,22 @@ function M.items(index, path, pos)
   }
   local items = {}
   for _, candidate in ipairs(candidates(index, found)) do
-    local text = identifier(candidate.name) and candidate.name or ('"%s"'):format(candidate.name)
-    items[#items + 1] = {
-      label = candidate.name,
-      kind = candidate.kind,
-      detail = candidate.detail,
-      filterText = candidate.name,
-      insertTextFormat = vim.lsp.protocol.InsertTextFormat.PlainText,
-      textEdit = { range = range, newText = text },
-      data = { kind = found.kind, class = found.class, name = candidate.name },
-    }
+    local plain = identifier(candidate.name)
+    local listed = found.present and (found.present[candidate.name] or not plain)
+    if not listed then
+      items[#items + 1] = {
+        label = candidate.name,
+        kind = candidate.kind,
+        detail = candidate.detail,
+        filterText = candidate.name,
+        insertTextFormat = vim.lsp.protocol.InsertTextFormat.PlainText,
+        textEdit = {
+          range = range,
+          newText = plain and candidate.name or ('"%s"'):format(candidate.name),
+        },
+        data = { kind = found.kind, class = found.class, name = candidate.name },
+      }
+    end
   end
   return items
 end
