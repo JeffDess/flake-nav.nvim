@@ -133,6 +133,12 @@ T["class-only and deeper selections are not usages"] = function()
   eq(#result.uses, 0)
 end
 
+T["class selections"] = function()
+  local src = "let fm = config.flake.modules; in { a = fm.nixos; b = fm.nixos.x; }"
+  local col = src:find("nixos;", 1, true) - 1
+  eq(parse.parse(src).classes, { { class = "nixos", range = { 0, col, 0, col + 5 } } })
+end
+
 T["definitions still found alongside usages"] = function()
   local result = parse.parse(
     lines(

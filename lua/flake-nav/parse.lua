@@ -509,7 +509,7 @@ local function consumption(node, scopes, src, consumed)
   end
 end
 
-local function walk(node, scopes, src, uses, consumed)
+local function walk(node, scopes, src, uses, consumed, classes)
   local kind = node:type()
   if kind == "ERROR" then
     return
@@ -536,6 +536,8 @@ local function walk(node, scopes, src, uses, consumed)
         range = { rest[2].node:range() },
         class_range = { rest[1].node:range() },
       }
+    elseif rest and #rest == 1 then
+      classes[#classes + 1] = { class = rest[1].name, range = { rest[1].node:range() } }
     end
   elseif kind == "with_expression" then
     local rest = after_root(first(node, "environment"), scopes, src)
@@ -558,7 +560,7 @@ local function walk(node, scopes, src, uses, consumed)
 
   for child in node:iter_children() do
     if child:named() then
-      walk(child, scopes, src, uses, consumed)
+      walk(child, scopes, src, uses, consumed, classes)
     end
   end
   if pushed then
@@ -732,6 +734,7 @@ function M.parse(text)
     mapped = {},
     external = {},
     uses = {},
+    classes = {},
     consumed = { all = false, classes = {} },
     errors = 0,
     options = { decls = {}, uses = {} },
@@ -743,7 +746,7 @@ function M.parse(text)
   end
   local root = parser:parse()[1]:root()
   module_defs(first(root, "expression"), text, result)
-  walk(root, {}, text, result.uses, result.consumed)
+  walk(root, {}, text, result.uses, result.consumed, result.classes)
   result.options = require("flake-nav.options").collect(root, text)
   result.inputs = require("flake-nav.inputs").collect(root, text)
   result.errors = count_errors(root)
