@@ -472,6 +472,30 @@ function Index:locked(name)
   return node and node.locked or nil
 end
 
+function Index:known_inputs()
+  local flake = self:parsed(self:flake_path())
+  local lock = self:lock()
+  local root = lock and type(lock.nodes) == "table" and lock.nodes[lock.root or "root"]
+  local locked = type(root) == "table" and type(root.inputs) == "table" and root.inputs or {}
+  local decls = flake and flake.inputs.decls or {}
+  if #decls == 0 and not lock then
+    return nil
+  end
+  local out = {}
+  for _, decl in ipairs(decls) do
+    out[decl.name] = true
+  end
+  for name in pairs(locked) do
+    out[name] = true
+  end
+  for _, use in ipairs(flake and flake.inputs.uses or {}) do
+    if use.binder_range then
+      out[use.name] = true
+    end
+  end
+  return out
+end
+
 function Index:stats()
   local stats = {
     root = self.root,
