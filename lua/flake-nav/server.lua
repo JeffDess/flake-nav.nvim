@@ -2,6 +2,7 @@ local Index = require("flake-nav.index")
 local resolve = require("flake-nav.resolve")
 local position = require("flake-nav.position")
 local diagnostics = require("flake-nav.diagnostics")
+local completion = require("flake-nav.completion")
 
 local M = { indexes = {}, servers = {} }
 
@@ -310,6 +311,7 @@ function M.create(opts)
             definitionProvider = true,
             referencesProvider = true,
             hoverProvider = true,
+            completionProvider = { triggerCharacters = { "." }, resolveProvider = true },
           },
           serverInfo = { name = "flake-nav" },
         }
@@ -381,6 +383,26 @@ function M.create(opts)
             value = hover_markdown(index, defs, opts.hover.max_lines),
           },
         }
+      end,
+      ["textDocument/completion"] = function(params)
+        index:refresh()
+        local items =
+          completion.items(index, vim.uri_to_fname(params.textDocument.uri), params.position)
+        return items and { isIncomplete = false, items = items } or nil
+      end,
+      ["completionItem/resolve"] = function(item)
+        local data = item.data or {}
+        local value
+        if data.kind == "input" then
+          value = input_hover(index, data.name)
+        elseif data.kind == "module" then
+          local defs = index:definitions(data.class, data.name)
+          value = #defs > 0 and hover_markdown(index, defs, opts.hover.max_lines) or nil
+        end
+        if value then
+          item.documentation = { kind = "markdown", value = value }
+        end
+        return item
       end,
     }
 
