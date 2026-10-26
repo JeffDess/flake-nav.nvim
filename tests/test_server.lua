@@ -39,6 +39,7 @@ T["initialize advertises capabilities"] = function()
   eq(caps.definitionProvider, true)
   eq(caps.referencesProvider, true)
   eq(caps.hoverProvider, true)
+  eq(caps.completionProvider, { triggerCharacters = { "." }, resolveProvider = true })
   eq(caps.positionEncoding, "utf-16")
   eq(caps.textDocumentSync, { openClose = true, change = 1 })
 end
