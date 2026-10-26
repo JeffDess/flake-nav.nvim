@@ -27,8 +27,8 @@ local MODULES = {
 
 local HEAD = { "{ config, ... }:", "let", "  fm = config.flake.modules;", "in", "{" }
 
-local function complete(idx, root, body, marker)
-  local lines = vim.list_extend(vim.deepcopy(HEAD), body)
+local function complete(idx, root, body, marker, head)
+  local lines = vim.list_extend(vim.deepcopy(head or HEAD), body)
   local row, col
   for i, line in ipairs(lines) do
     local found = line:find(marker, 1, true)
@@ -88,6 +88,44 @@ T["with lists leave out present names and names to quote"] = function()
   eq(labels(complete(idx, root, { "  imports = with fm.nixos; [ base |", "}" }, "|")), { "locale" })
   local multi = { "  imports = with fm.nixos; [", "    locale", "    |", "  ];", "}" }
   eq(labels(complete(idx, root, multi, "|")), { "base" })
+  vim.fn.delete(root, "rf")
+end
+
+local INPUTS = {
+  ["flake.nix"] = {
+    "{",
+    '  inputs.nixpkgs.url = "github:nixos/nixpkgs";',
+    '  inputs.hooks.url = "github:cachix/git-hooks.nix";',
+    "  outputs = { self, nixpkgs, registry, ... }: { };",
+    "}",
+  },
+  ["flake.lock"] = {
+    '{ "nodes": { "root": { "inputs": { "pinned": "pinned" } }, "pinned": { } },',
+    '  "root": "root", "version": 7 }',
+  },
+}
+
+T["flake inputs"] = function()
+  local idx, root = project(INPUTS)
+  local head = { "{ inputs, ... }:", "{" }
+  local items = complete(idx, root, { "  imports = [ inputs.| ];", "}" }, "|", head)
+  eq(labels(items), { "hooks", "nixpkgs", "pinned", "registry" })
+  eq(items[2].detail, "flake.nix:2")
+  eq(items[2].kind, vim.lsp.protocol.CompletionItemKind.Reference)
+  local perSystem = { "  perSystem = { inputs', ... }: { x = inputs'.|", "}" }
+  eq(#complete(idx, root, perSystem, "|", head), 4)
+  vim.fn.delete(root, "rf")
+end
+
+T["no input of the root flake in a nested flake"] = function()
+  local files = vim.deepcopy(INPUTS)
+  files["vendor/flake.nix"] = { "{ outputs = _: { }; }" }
+  local idx, root = project(files)
+  local path = vim.fs.joinpath(root, "vendor/flake.nix")
+  local text = "{ outputs = inputs: { x = inputs.; }; }"
+  idx:set_document(path, text)
+  local col = text:find("inputs.;", 1, true) + #"inputs."
+  eq(completion.items(idx, path, { line = 0, character = col - 1 }), nil)
   vim.fn.delete(root, "rf")
 end
 

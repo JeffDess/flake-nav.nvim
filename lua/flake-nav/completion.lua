@@ -27,6 +27,11 @@ local function find(parsed, row, col)
       return { kind = "module", class = use.class }
     end
   end
+  for _, use in ipairs(parsed.inputs.uses) do
+    if at(use, row, col) then
+      return { kind = "input" }
+    end
+  end
   for _, selection in ipairs(parsed.classes) do
     if
       selection.class == PLACEHOLDER
@@ -85,7 +90,12 @@ local function candidates(index, found)
       out[#out + 1] = { name = name, kind = kind, detail = detail }
     end
   end
-  if found.kind == "class" then
+  if found.kind == "input" then
+    for name in pairs(index:known_inputs() or {}) do
+      local decl = index:input_declaration(name)
+      add(name, KIND.Reference, decl and decl.range and ("flake.nix:%d"):format(decl.range[1] + 1))
+    end
+  elseif found.kind == "class" then
     for _, entry in ipairs(module_defs(index)) do
       add(entry.item.class, KIND.Class)
     end
@@ -121,7 +131,7 @@ function M.items(index, path, pos)
   local line = lines[pos.line + 1] or ""
   local col = position.to_byte(line, pos.character)
   local found, start = context(lines, pos.line, col)
-  if not found then
+  if not found or (found.kind == "input" and not index:owns_inputs(path)) then
     return nil
   end
   local range = {
