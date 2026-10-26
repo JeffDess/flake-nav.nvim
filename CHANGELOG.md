@@ -2,6 +2,31 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.3.0] - 2026-10-26
+
+### Features
+
+- *(inputs)* Find flake input declarations
+- *(inputs)* Find flake input usages
+- *(resolve)* Resolve flake inputs under the cursor
+- *(index)* Look up flake inputs and their locked revisions
+- *(server)* Answer definition, references and hover for flake inputs
+- *(filter)* Drop jumps to outputs formals when flake-nav resolves the input
+- *(command)* Show input counts in :FlakeNav info
+- *(parse)* Find module definitions under config
+- *(parse)* Mark module classes defined by a computed value
+- *(diagnostics)* Warn on unknown modules
+- *(diagnostics)* Hint at unused module definitions
+- *(diagnostics)* Warn on unknown flake inputs
+- *(server)* Publish diagnostics for open documents
+- Add the diagnostics option
+
+### Documentation
+
+- *(readme)* Document flake input navigation
+- *(readme)* Document module definitions under config
+- *(readme)* Document diagnostics
+
 ## [0.2.0] - 2026-10-24
 
 ### Features

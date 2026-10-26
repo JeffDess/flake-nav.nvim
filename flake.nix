@@ -21,7 +21,7 @@
   outputs =
     inputs:
     let
-      version = "0.2.0";
+      version = "0.3.0";
     in
     inputs.flake-parts.lib.mkFlake { inherit inputs; } {
       systems = [
