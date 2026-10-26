@@ -44,15 +44,39 @@ local function find(parsed, row, col)
   return nil
 end
 
+local function in_with_list(lines, row, start)
+  local text = table.concat(vim.list_slice(lines, 1, row), "\n")
+    .. "\n"
+    .. lines[row + 1]:sub(1, start)
+  local keywords = {}
+  for at_with in text:gmatch("()%f[%w_]with%f[^%w_]") do
+    keywords[#keywords + 1] = at_with
+  end
+  for i = #keywords, 1, -1 do
+    local tail = text:sub(keywords[i])
+    local _, opened = tail:gsub("%[", "")
+    local _, closed = tail:gsub("%]", "")
+    if opened > closed then
+      return true
+    end
+  end
+  return false
+end
+
 local function context(lines, row, col)
   local line = lines[row + 1] or ""
   local before, after = line:sub(1, col), line:sub(col + 1)
   local start = #before - #before:match(WORD .. "$")
   local rest = after:sub(#after:match("^" .. WORD) + 1)
+  local dotted = line:sub(start, start) == "."
+  local follows = line:sub(1, start):match('follows%s*=%s*"$') ~= nil
+  if not (dotted or follows or in_with_list(lines, row, start)) then
+    return nil
+  end
   for _, suffix in ipairs(SUFFIXES) do
     local patched = vim.list_extend({}, lines)
     patched[row + 1] = line:sub(1, start) .. PLACEHOLDER .. suffix .. rest
-    local found = find(parse.parse(table.concat(patched, "\n")), row, start)
+    local found = find(parse.parse_uses(table.concat(patched, "\n")), row, start)
     if found then
       return found, start
     end

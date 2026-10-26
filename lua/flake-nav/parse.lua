@@ -753,6 +753,23 @@ function M.parse(text)
   return result
 end
 
+function M.parse_uses(text)
+  local result = {
+    uses = {},
+    classes = {},
+    consumed = { all = false, classes = {} },
+    inputs = { decls = {}, uses = {} },
+  }
+  local ok, parser = pcall(vim.treesitter.get_string_parser, text, "nix")
+  if not ok then
+    return result
+  end
+  local root = parser:parse()[1]:root()
+  walk(root, {}, text, result.uses, result.consumed, result.classes)
+  result.inputs = require("flake-nav.inputs").collect(root, text)
+  return result
+end
+
 M._internal = {
   text_of = text_of,
   first = first,

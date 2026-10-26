@@ -139,6 +139,18 @@ T["class selections"] = function()
   eq(parse.parse(src).classes, { { class = "nixos", range = { 0, col, 0, col + 5 } } })
 end
 
+T["usages alone match the full parse"] = function()
+  local src = lines(
+    "{ config, inputs, ... }:",
+    "let fm = config.flake.modules; in",
+    "{ imports = with fm.nixos; [ a b ] ++ [ fm.darwin.c inputs.hooks.x ]; y = fm.nixos; }"
+  )
+  local full, light = parse.parse(src), parse.parse_uses(src)
+  eq(light.uses, full.uses)
+  eq(light.classes, full.classes)
+  eq(light.inputs.uses, full.inputs.uses)
+end
+
 T["definitions still found alongside usages"] = function()
   local result = parse.parse(
     lines(
