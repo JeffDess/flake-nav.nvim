@@ -34,30 +34,6 @@ local function flags(index, field)
   return out
 end
 
-local function known_inputs(index)
-  local flake = index:parsed(index:flake_path())
-  local lock = index:lock()
-  local root = lock and type(lock.nodes) == "table" and lock.nodes[lock.root or "root"]
-  local locked = type(root) == "table" and type(root.inputs) == "table" and root.inputs or {}
-  local decls = flake and flake.inputs.decls or {}
-  if #decls == 0 and not lock then
-    return nil
-  end
-  local out = {}
-  for _, decl in ipairs(decls) do
-    out[decl.name] = true
-  end
-  for name in pairs(locked) do
-    out[name] = true
-  end
-  for _, use in ipairs(flake and flake.inputs.uses or {}) do
-    if use.binder_range then
-      out[use.name] = true
-    end
-  end
-  return out
-end
-
 local function definitions(index)
   local out = keys(index, "defs")
   for _, external in ipairs(index.external) do
@@ -82,7 +58,7 @@ function M.context(index)
     uses = keys(index, "uses"),
     computed = flags(index, "computed"),
     consumed = flags(index, "consumed"),
-    inputs = known_inputs(index),
+    inputs = index:known_inputs(),
   }
 end
 
