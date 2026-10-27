@@ -385,8 +385,9 @@ local function after_root(node, scopes, src, partial)
   if not base then
     return nil
   end
-  if lookup(scopes, base) == "alias" then
-    return segs
+  local bound = lookup(scopes, base)
+  if type(bound) == "table" then
+    return vim.list_extend(vim.list_slice(bound.prefix), segs)
   end
   local names = { base }
   for _, seg in ipairs(segs) do
@@ -438,10 +439,10 @@ local function let_scope(node, scopes, src)
   while changed do
     changed = false
     for _, c in ipairs(candidates) do
-      if scope[c.name] ~= "alias" then
+      if type(scope[c.name]) ~= "table" then
         local rest = after_root(c.expr, scopes, src)
-        if rest and #rest == 0 then
-          scope[c.name] = "alias"
+        if rest and #rest <= 1 then
+          scope[c.name] = { prefix = rest }
           changed = true
         end
       end
