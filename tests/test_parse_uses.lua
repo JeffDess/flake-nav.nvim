@@ -147,6 +147,12 @@ T["alias of a class"] = function()
   eq(locale.class_range, { 3, 27, 3, 32 })
 end
 
+T["an inherit of a class alias reads the class whole"] = function()
+  local src =
+    "{ config, ... }: let n = config.flake.modules.nixos; in { _module.args = { inherit n; }; }"
+  eq(parse.parse(src).consumed, { all = false, classes = { nixos = true } })
+end
+
 T["non roots are ignored"] = function()
   eq(#parse.parse("{ pkgs, ... }: { x = pkgs.nixos.locale; y = config.modules.nixos.a; }").uses, 0)
 end
