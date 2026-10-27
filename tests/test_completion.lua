@@ -147,6 +147,13 @@ T["columns are counted in UTF-16"] = function()
   vim.fn.delete(root, "rf")
 end
 
+T["an unclosed list in parentheses"] = function()
+  local idx, root = project(MODULES)
+  local body = { "  imports = [ ./a.nix ] ++ (with fm.nixos; [ |", "}" }
+  eq(labels(complete(idx, root, body, "|")), { "base", "locale" })
+  vim.fn.delete(root, "rf")
+end
+
 T["nothing outside a module path"] = function()
   local idx, root = project(MODULES)
   eq(complete(idx, root, { "  x = pkgs.|", "}" }, "|"), nil)
