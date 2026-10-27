@@ -385,7 +385,6 @@ function M.create(opts)
         }
       end,
       ["textDocument/completion"] = function(params)
-        index:refresh()
         local items =
           completion.items(index, vim.uri_to_fname(params.textDocument.uri), params.position)
         return items and { isIncomplete = false, items = items } or nil

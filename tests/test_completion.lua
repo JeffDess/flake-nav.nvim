@@ -183,6 +183,23 @@ T["a class in the middle of a path"] = function()
   vim.fn.delete(root, "rf")
 end
 
+T["the index is refreshed only where a completion applies"] = function()
+  local idx, root = project(MODULES)
+  local calls, refresh = 0, idx.refresh
+  idx.refresh = function(self)
+    calls = calls + 1
+    return refresh(self)
+  end
+  eq(complete(idx, root, { "  x = pkgs.|", "}" }, "|"), nil)
+  eq(calls, 0)
+  eq(
+    labels(complete(idx, root, { "  x = fm.|", "}" }, "|")),
+    { "darwin", "generic", "homeManager", "nixos" }
+  )
+  eq(calls, 1)
+  vim.fn.delete(root, "rf")
+end
+
 T["nothing outside a module path"] = function()
   local idx, root = project(MODULES)
   eq(complete(idx, root, { "  x = pkgs.|", "}" }, "|"), nil)
