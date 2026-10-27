@@ -2,6 +2,7 @@ local T = MiniTest.new_set()
 local eq = MiniTest.expect.equality
 local Index = require("flake-nav.index")
 local completion = require("flake-nav.completion")
+local position = require("flake-nav.position")
 
 local function project(files)
   local root = vim.fn.tempname()
@@ -35,6 +36,7 @@ local function complete(idx, root, body, marker, head)
     if found then
       row, col = i - 1, found - 1
       lines[i] = line:sub(1, found - 1) .. line:sub(found + #marker)
+      col = position.to_lsp(lines[i], col)
     end
   end
   local path = vim.fs.joinpath(root, "host.nix")
@@ -134,6 +136,14 @@ T["no input of the root flake in a nested flake"] = function()
   idx:set_document(path, text)
   local col = text:find("inputs.;", 1, true) + #"inputs."
   eq(completion.items(idx, path, { line = 0, character = col - 1 }), nil)
+  vim.fn.delete(root, "rf")
+end
+
+T["columns are counted in UTF-16"] = function()
+  local idx, root = project(MODULES)
+  local items, row, col = complete(idx, root, { '  d = "é"; x = fm.nixos.|', "}" }, "|")
+  eq(labels(items), { "base", "locale", "my module" })
+  eq(items[1].textEdit.range.start, { line = row, character = col })
   vim.fn.delete(root, "rf")
 end
 
