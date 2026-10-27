@@ -5,7 +5,6 @@ local M = {}
 
 local KIND = vim.lsp.protocol.CompletionItemKind
 local PLACEHOLDER = "__flake_nav_cursor__"
--- NOTE: Appended in turn so that an unclosed list or a missing `;` still parses around the cursor.
 local SUFFIXES = { "", ";", " ];" }
 local WORD = "[%w_'%-]*"
 
@@ -79,9 +78,12 @@ local function context(lines, row, col)
   for _, suffix in ipairs(SUFFIXES) do
     local patched = vim.list_extend({}, lines)
     patched[row + 1] = line:sub(1, start) .. PLACEHOLDER .. suffix .. rest
-    local found = find(parse.parse_uses(table.concat(patched, "\n")), row, start)
+    local parsed = parse.parse_uses(table.concat(patched, "\n"))
+    local found = find(parsed, row, start)
     if found then
       return found, start
+    elseif parsed.errors == 0 and rest:sub(1, 1) ~= "." then
+      return nil
     end
   end
   return nil

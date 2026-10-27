@@ -791,6 +791,7 @@ function M.parse_uses(text)
     classes = {},
     consumed = { all = false, classes = {} },
     inputs = { decls = {}, uses = {} },
+    errors = 0,
   }
   local ok, parser = pcall(vim.treesitter.get_string_parser, text, "nix")
   if not ok then
@@ -799,6 +800,7 @@ function M.parse_uses(text)
   local root = parser:parse()[1]:root()
   walk(root, {}, text, result.uses, result.consumed, result.classes)
   result.inputs = require("flake-nav.inputs").collect(root, text)
+  result.errors = count_errors(root)
   return result
 end
 
