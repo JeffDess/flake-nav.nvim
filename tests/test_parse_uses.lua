@@ -144,7 +144,7 @@ T["alias of a class"] = function()
     return use.name == "locale"
   end)
   eq(locale.range, { 7, 8, 7, 14 })
-  eq(locale.class_range, { 3, 27, 3, 32 })
+  eq(locale.class_range, nil)
 end
 
 T["an inherit of a class alias reads the class whole"] = function()

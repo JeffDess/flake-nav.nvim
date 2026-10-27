@@ -387,7 +387,10 @@ local function after_root(node, scopes, src, partial)
   end
   local bound = lookup(scopes, base)
   if type(bound) == "table" then
-    return vim.list_extend(vim.list_slice(bound.prefix), segs)
+    local prefix = vim.tbl_map(function(seg)
+      return { name = seg.name }
+    end, bound.prefix)
+    return vim.list_extend(prefix, segs)
   end
   local names = { base }
   for _, seg in ipairs(segs) do
@@ -556,7 +559,7 @@ local function walk(node, scopes, src, uses, consumed, classes)
         class = rest[1].name,
         name = rest[2].name,
         range = { rest[2].node:range() },
-        class_range = { rest[1].node:range() },
+        class_range = rest[1].node and { rest[1].node:range() } or nil,
       }
     elseif rest and #rest == 1 then
       classes[#classes + 1] = { class = rest[1].name, range = { rest[1].node:range() } }
