@@ -25,6 +25,15 @@ T["on a selection class"] = function()
   eq(resolve.at(parsed, 7, 12), { kind = "module", class = "homeManager", name = "ssl" })
 end
 
+T["on the class of an alias binding"] = function()
+  local aliased = parse.parse(table.concat({
+    "{ config, ... }:",
+    "let n = config.flake.modules.nixos; in",
+    "{ x = n.locale; }",
+  }, "\n"))
+  eq(resolve.at(aliased, 1, 30), { kind = "option", class = "flake", path = "flake.modules.nixos" })
+end
+
 T["on a with identifier"] = function()
   local base = { kind = "module", class = "nixos", name = "base", binder_range = { 6, 14, 6, 18 } }
   eq(resolve.at(parsed, 6, 31), base)
