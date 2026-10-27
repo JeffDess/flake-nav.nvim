@@ -136,6 +136,41 @@ T["no unused hint for a class read as a whole"] = function()
   vim.fn.delete(root, "rf")
 end
 
+T["an alias of a class is read as a whole only where it is used whole"] = function()
+  local base = { "{ flake.modules.nixos = { a = { }; b = { }; }; flake.modules.darwin.c = { }; }" }
+  local host = {
+    "{ config, lib, ... }:",
+    "let",
+    "  n = config.flake.modules.nixos;",
+    "  d = config.flake.modules.darwin;",
+    "  m = n;",
+    "in",
+    "{",
+    "  flake.modules.nixos.host.imports = with m; [ a ];",
+    "  x = d.c;",
+    "}",
+  }
+  local idx, root = project({
+    ["flake.nix"] = { "{ outputs = _: { }; }" },
+    ["base.nix"] = base,
+    ["host.nix"] = host,
+  })
+  local path = vim.fs.joinpath(root, "base.nix")
+  local function hinted()
+    return vim.tbl_map(function(d)
+      return d.message
+    end, diagnostics.compute(idx, path, { unused = true }))
+  end
+  eq(hinted(), { "Module nixos.b is never used" })
+  host[9] = "  x = lib.attrValues m;"
+  idx:set_document(vim.fs.joinpath(root, "host.nix"), table.concat(host, "\n"))
+  eq(hinted(), { "Module darwin.c is never used" })
+  host[5] = "  m = n.${name};"
+  idx:set_document(vim.fs.joinpath(root, "host.nix"), table.concat(host, "\n"))
+  eq(hinted(), { "Module darwin.c is never used" })
+  vim.fn.delete(root, "rf")
+end
+
 T["unused definitions"] = function()
   local base = { "{ flake.modules.nixos = { base = { }; old = { }; }; }" }
   local idx, root = project({
