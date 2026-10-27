@@ -153,6 +153,11 @@ T["an inherit of a class alias reads the class whole"] = function()
   eq(parse.parse(src).consumed, { all = false, classes = { nixos = true } })
 end
 
+T["a selection through a class alias reads one module"] = function()
+  local src = "let n = config.flake.modules.nixos; in { x = n.a; }"
+  eq(parse.parse(src).consumed, { all = false, classes = {} })
+end
+
 T["non roots are ignored"] = function()
   eq(#parse.parse("{ pkgs, ... }: { x = pkgs.nixos.locale; y = config.modules.nixos.a; }").uses, 0)
 end
