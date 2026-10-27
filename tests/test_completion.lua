@@ -154,6 +154,13 @@ T["an unclosed list in parentheses"] = function()
   vim.fn.delete(root, "rf")
 end
 
+T["no known input gives an empty list"] = function()
+  local idx, root = project(MODULES)
+  local head = { "{ inputs, ... }:", "{" }
+  eq(complete(idx, root, { "  x = inputs.|", "}" }, "|", head), {})
+  vim.fn.delete(root, "rf")
+end
+
 T["nothing outside a module path"] = function()
   local idx, root = project(MODULES)
   eq(complete(idx, root, { "  x = pkgs.|", "}" }, "|"), nil)
