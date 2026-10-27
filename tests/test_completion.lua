@@ -3,6 +3,7 @@ local eq = MiniTest.expect.equality
 local Index = require("flake-nav.index")
 local completion = require("flake-nav.completion")
 local position = require("flake-nav.position")
+local parse = require("flake-nav.parse")
 
 local function project(files)
   local root = vim.fn.tempname()
@@ -158,6 +159,27 @@ T["no known input gives an empty list"] = function()
   local idx, root = project(MODULES)
   local head = { "{ inputs, ... }:", "{" }
   eq(complete(idx, root, { "  x = inputs.|", "}" }, "|", head), {})
+  vim.fn.delete(root, "rf")
+end
+
+T["text that parses is parsed once"] = function()
+  local idx, root = project(MODULES)
+  local calls, parse_uses = 0, parse.parse_uses
+  parse.parse_uses = function(...)
+    calls = calls + 1
+    return parse_uses(...)
+  end
+  local items = complete(idx, root, { "  x = with pkgs; [ git rip| ];", "}" }, "|")
+  parse.parse_uses = parse_uses
+  eq(items, nil)
+  eq(calls, 1)
+  vim.fn.delete(root, "rf")
+end
+
+T["a class in the middle of a path"] = function()
+  local idx, root = project(MODULES)
+  local items = complete(idx, root, { "  x = fm.|.locale;", "}" }, "|")
+  eq(labels(items), { "darwin", "generic", "homeManager", "nixos" })
   vim.fn.delete(root, "rf")
 end
 

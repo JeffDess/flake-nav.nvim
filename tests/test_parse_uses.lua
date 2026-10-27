@@ -184,6 +184,7 @@ T["usages alone match the full parse"] = function()
   eq(light.uses, full.uses)
   eq(light.classes, full.classes)
   eq(light.inputs.uses, full.inputs.uses)
+  eq(light.errors, full.errors)
 end
 
 T["definitions still found alongside usages"] = function()
