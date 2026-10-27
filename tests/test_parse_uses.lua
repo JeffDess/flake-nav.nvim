@@ -123,6 +123,30 @@ T["alias of an alias"] = function()
   eq(keys(result), { "nixos.a" })
 end
 
+T["alias of a class"] = function()
+  local result = parse.parse(
+    lines(
+      "{ config, ... }:",
+      "let",
+      "  fm = config.flake.modules;",
+      "  n = config.flake.modules.nixos;",
+      "  h = fm.homeManager;",
+      "in",
+      "{",
+      "  x = n.locale;",
+      "  y = with h; [ ssl ];",
+      "  z = n.a.b;",
+      "}"
+    )
+  )
+  eq(keys(result), { "homeManager.ssl", "nixos.locale" })
+  local locale = vim.iter(result.uses):find(function(use)
+    return use.name == "locale"
+  end)
+  eq(locale.range, { 7, 8, 7, 14 })
+  eq(locale.class_range, { 3, 27, 3, 32 })
+end
+
 T["non roots are ignored"] = function()
   eq(#parse.parse("{ pkgs, ... }: { x = pkgs.nixos.locale; y = config.modules.nixos.a; }").uses, 0)
 end
