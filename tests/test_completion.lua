@@ -144,4 +144,12 @@ T["nothing outside a module path"] = function()
   vim.fn.delete(root, "rf")
 end
 
+T["nothing past the end of the document"] = function()
+  local idx, root = project(MODULES)
+  local path = vim.fs.joinpath(root, "host.nix")
+  idx:set_document(path, "{ x = 1; }")
+  eq(completion.items(idx, path, { line = 3, character = 0 }), nil)
+  vim.fn.delete(root, "rf")
+end
+
 return T
