@@ -496,7 +496,26 @@ local function environment_of_with(node)
   return parent and parent:type() == "with_expression" and first(parent, "environment"):equal(node)
 end
 
+local function alias_binding(node, scopes, src)
+  local parent = node:parent()
+  local owner = parent and parent:type() == "binding" and parent:parent()
+  owner = owner and owner:type() == "binding_set" and owner:parent()
+  if not (owner and owner:type() == "let_expression") then
+    return false
+  end
+  local segs = attrpath(first(parent, "attrpath"), src)
+  return segs and #segs == 1 and type(lookup(scopes, segs[1].name)) == "table"
+end
+
+local function selected(node)
+  local parent = node:parent()
+  return parent and parent:type() == "select_expression" and first(parent, "expression"):equal(node)
+end
+
 local function consumption(node, scopes, src, consumed)
+  if alias_binding(node, scopes, src) then
+    return
+  end
   local rest = after_root(node, scopes, src, true)
   if not rest or #rest == 0 then
     return
@@ -526,7 +545,9 @@ local function walk(node, scopes, src, uses, consumed, classes)
     pushed = false
   end
 
-  if kind == "select_expression" then
+  if kind == "variable_expression" and not selected(node) then
+    consumption(node, scopes, src, consumed)
+  elseif kind == "select_expression" then
     consumption(node, scopes, src, consumed)
     local rest = after_root(node, scopes, src)
     if rest and #rest == 2 then
