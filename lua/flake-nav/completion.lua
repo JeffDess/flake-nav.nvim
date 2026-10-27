@@ -163,6 +163,7 @@ function M.items(index, path, pos)
   if not found or (found.kind == "input" and not index:owns_inputs(path)) then
     return nil
   end
+  index:refresh()
   local range = {
     start = { line = pos.line, character = position.to_lsp(line, start) },
     ["end"] = { line = pos.line, character = pos.character },
