@@ -22,6 +22,7 @@ local function request(rpc, method, params)
   vim.wait(1000, function()
     return reply ~= nil
   end)
+  eq(reply.err, nil)
   return reply.result
 end
 
