@@ -64,7 +64,10 @@ local function in_with_list(lines, row, start)
 end
 
 local function context(lines, row, col)
-  local line = lines[row + 1] or ""
+  local line = lines[row + 1]
+  if not line then
+    return nil
+  end
   local before, after = line:sub(1, col), line:sub(col + 1)
   local start = #before - #before:match(WORD .. "$")
   local rest = after:sub(#after:match("^" .. WORD) + 1)
