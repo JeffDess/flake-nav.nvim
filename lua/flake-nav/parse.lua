@@ -578,6 +578,13 @@ local function walk(node, scopes, src, uses, consumed, classes)
         end
       end
     end
+  elseif kind == "inherit" then
+    for _, attr in ipairs(inherited_attrs(node, src)) do
+      local bound = lookup(scopes, attr.name)
+      if type(bound) == "table" and #bound.prefix == 1 then
+        consumed.classes[bound.prefix[1].name] = true
+      end
+    end
   end
 
   for child in node:iter_children() do
