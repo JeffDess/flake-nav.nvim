@@ -444,7 +444,18 @@ function M.create(opts)
             )
           else
             local ok, result = pcall(handler, params)
-            callback(nil, ok and result or nil)
+            if ok then
+              callback(nil, result)
+            else
+              vim.lsp.log.error("flake-nav: " .. method .. " failed", result)
+              callback(
+                vim.lsp.rpc.rpc_response_error(
+                  vim.lsp.protocol.ErrorCodes.InternalError,
+                  tostring(result)
+                ),
+                nil
+              )
+            end
           end
           if notify_reply_callback then
             notify_reply_callback(id)

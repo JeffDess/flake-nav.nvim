@@ -120,4 +120,17 @@ T["registers its index"] = function()
   eq(server.indexes[fixture] ~= nil, true)
 end
 
+T["a failed request is reported"] = function()
+  local logged
+  local original = vim.lsp.log.error
+  vim.lsp.log.error = function(...)
+    logged = { ... }
+  end
+  local reply = request(start(), "textDocument/definition", {})
+  vim.lsp.log.error = original
+  eq(reply.result, nil)
+  eq(reply.err and reply.err.code, vim.lsp.protocol.ErrorCodes.InternalError)
+  eq(logged and logged[1], "flake-nav: textDocument/definition failed")
+end
+
 return T
