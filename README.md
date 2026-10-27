@@ -186,11 +186,14 @@ They are used as:
 
 ```nix
 fm.nixos.audio                       # fm = config.flake.modules;
+nixos.audio                          # nixos = fm.nixos;
 config.flake.modules.nixos.audio
 self.modules.nixos.audio
 inputs.self.modules.nixos.audio
 with fm.nixos; [ audio desktop ]
 ```
+
+Aliases are bound with `let`, under any name.
 
 Options are declared with `options.<path> = mkOption { … }` (or
 `mkEnableOption`, `mkPackageOption`), nested attrsets included, inside:
